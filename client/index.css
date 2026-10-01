@@ -318,3 +318,44 @@ body {
 	background: var(--background);
 	color: var(--text);
 }
+
+.PlayerColorRow-toggle {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	height: 32px;
+	padding: 0 8px;
+	border: none;
+	background: none;
+	color: var(--tl-color-text);
+	font: inherit;
+	font-size: 12px;
+	text-align: left;
+	cursor: pointer;
+}
+
+.PlayerColorRow-toggle:hover {
+	background: var(--tl-color-muted-2);
+	border-radius: 6px;
+}
+
+.PlayerColorRow-swatch {
+	width: 12px;
+	height: 12px;
+	border-radius: 50%;
+	border: 1px solid var(--tl-color-text-3);
+	flex-shrink: 0;
+}
+
+.PlayerColorRow-name {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.PlayerColorRow-reset {
+	padding: 0 4px;
+	color: var(--tl-color-text-3);
+}

@@ -26,7 +26,9 @@ Phases 1–4 are done:
   position and styling admins give them as the tournament progresses.
 - **Phase 4:** each diagram has its own palette of eight extra named colors, edited from the
   header's "Palette" button. They appear in tldraw's style panel for every shape, sync to all
-  editors, and undo like any other edit.
+  editors, and undo like any other edit. Individual players can be given a color too, from a
+  "Players" section in the style panel when a match card is selected; it applies wherever that
+  player appears.
 
 The `btp` adapter has been checked against every started tourney in Blame the Pads' real database
 (36 at the time). See [Plan](#plan) for what comes next.
@@ -193,6 +195,10 @@ interface BracketGraph {
   - Each client turns the palette into tldraw theme colors (fills, frames, notes and highlights
     for light and dark mode, mixed from the one chosen color) with `editor.updateTheme`, and gives
     the style panel the slots' names through translation overrides.
+- **Player colors** (`shared/playerColors.ts`, `client/bracket/PlayerColorsSection.tsx`): a color
+  name (built-in or palette) per entrant key, in the document meta beside the palette. Selecting
+  a match card adds a "Players" section to tldraw's style panel, reusing its color picker. The
+  color applies to that player's name on every card, so they can be followed through the bracket.
 - **Images:** uploads go to R2 via `TLAssetStore` (already wired up from the starter kit).
 
 ### Access (v1: no accounts)

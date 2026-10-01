@@ -28,6 +28,7 @@ import {
 } from '../../shared/matchCardShape'
 import type { MatchStatus } from '../../shared/bracketGraph'
 import { useLiveData } from '../live/liveDataStore'
+import { usePlayerColors } from './PlayerColorsSection'
 
 // Stroke widths per size, matching tldraw's built-in shapes.
 const STROKE_SIZES = { s: 1, m: 1.75, l: 2.5, xl: 5 } as const
@@ -99,6 +100,12 @@ function MatchCard({ shape }: { shape: MatchCardShape }) {
 	const strokeWidth = theme.strokeWidth * STROKE_SIZES[size]
 	const stroke = getColorValue(colors, color, 'solid')
 	const muted = getColorValue(colors, 'grey', 'solid')
+	const playerColors = usePlayerColors()
+	// A player's own color, if an admin gave them one that the current theme knows.
+	const playerColor = (key: string) => {
+		const name = playerColors[key]
+		return name && name in colors ? getColorValue(colors, name, 'solid') : undefined
+	}
 	const frame = new PathBuilder()
 		.moveTo(0, 0, { geometry: { isFilled: fill !== 'none' } })
 		.lineTo(w, 0)
@@ -156,7 +163,13 @@ function MatchCard({ shape }: { shape: MatchCardShape }) {
 				</div>
 				<div style={{ padding: `0 ${metrics.padding}px` }}>
 					{model?.rows.map((row, i) => (
-						<CardRow key={i} row={row} height={metrics.rowHeight} muted={muted} />
+						<CardRow
+							key={i}
+							row={row}
+							height={metrics.rowHeight}
+							muted={muted}
+							nameColor={row.kind === 'entrant' ? playerColor(row.entrant.key) : undefined}
+						/>
 					))}
 				</div>
 			</HTMLContainer>
@@ -164,7 +177,17 @@ function MatchCard({ shape }: { shape: MatchCardShape }) {
 	)
 }
 
-function CardRow({ row, height, muted }: { row: MatchCardRow; height: number; muted: string }) {
+function CardRow({
+	row,
+	height,
+	muted,
+	nameColor,
+}: {
+	row: MatchCardRow
+	height: number
+	muted: string
+	nameColor?: string
+}) {
 	if (row.kind === 'empty') return <div style={{ height }} />
 	if (row.kind === 'placeholder') {
 		return (
@@ -184,7 +207,9 @@ function CardRow({ row, height, muted }: { row: MatchCardRow; height: number; mu
 					{entrant.seed}
 				</span>
 			)}
-			<span className="MatchCard-name">{entrant.name}</span>
+			<span className="MatchCard-name" style={{ color: nameColor }}>
+				{entrant.name}
+			</span>
 			{result && (
 				<span className="MatchCard-result" style={{ color: muted }}>
 					{result}

@@ -6,6 +6,7 @@ import {
 	paletteFromDocument,
 	type DiagramPalette,
 } from '../../shared/palette'
+import { updateDocumentMeta } from '../documentMeta'
 import { paletteTranslations, themeWithPalette } from './paletteTheme'
 
 /**
@@ -33,11 +34,5 @@ export function usePalette(editor: Editor | null) {
 }
 
 export function setPalette(editor: Editor, palette: DiagramPalette) {
-	if (editor.getIsReadonly()) return
-	const document = editor.getDocumentSettings()
-	// Not editor.updateDocumentSettings, which leaves changes out of undo history; palette edits
-	// should undo like any other edit.
-	editor.run(() => {
-		editor.store.put([{ ...document, meta: documentMetaWithPalette(document, palette) }])
-	})
+	updateDocumentMeta(editor, (document) => documentMetaWithPalette(document, palette))
 }

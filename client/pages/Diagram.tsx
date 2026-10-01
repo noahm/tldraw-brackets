@@ -7,6 +7,7 @@ import { diagramConnectPath } from '../../shared/routes'
 import { diagramSchema } from '../../shared/schema'
 import { BracketPanel } from '../bracket/BracketPanel'
 import { MatchCardShapeUtil } from '../bracket/MatchCardShapeUtil'
+import { BracketStylePanel } from '../bracket/PlayerColorsSection'
 import { getBookmarkPreview } from '../getBookmarkPreview'
 import { LiveDataPanel } from '../live/LiveDataPanel'
 import { LiveDataProvider, useNewLiveDataStore } from '../live/liveDataStore'
@@ -25,7 +26,7 @@ const licenseKey = import.meta.env.VITE_TLDRAW_LICENSE_KEY
 const assetUrls = getAssetUrlsByImport()
 
 const shapeUtils = [MatchCardShapeUtil]
-const components: TLComponents = { TopPanel: BracketPanel }
+const components: TLComponents = { TopPanel: BracketPanel, StylePanel: BracketStylePanel }
 
 export function Diagram() {
 	const { diagramId = '' } = useParams<{ diagramId: string }>()
