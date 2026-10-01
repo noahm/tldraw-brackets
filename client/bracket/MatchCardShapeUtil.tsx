@@ -24,8 +24,11 @@ import {
 	matchCardMetrics,
 	matchCardShapeMigrations,
 	matchCardShapeProps,
+	SAME_AS_CARD,
 	type MatchCardShape,
 } from '../../shared/matchCardShape'
+import { HIDDEN, STATUS_BADGE_LABELS, type StatusColors } from '../../shared/statusColors'
+import { useStatusColors } from '../palette/StatusColorsEditor'
 import type { MatchStatus } from '../../shared/bracketGraph'
 import { useLiveData } from '../live/liveDataStore'
 import { usePlayerColors } from './PlayerColorsSection'
@@ -48,6 +51,7 @@ export class MatchCardShapeUtil extends ShapeUtil<MatchCardShape> {
 			dash: 'draw',
 			size: 's',
 			font: 'draw',
+			textColor: SAME_AS_CARD,
 		}
 	}
 
@@ -92,14 +96,16 @@ function MatchCard({ shape }: { shape: MatchCardShape }) {
 	const theme = useValue('theme', () => editor.getCurrentTheme(), [editor])
 	const colors = theme.colors[colorMode]
 
-	const { w, h, color, fill, dash, size, font, matchKey } = shape.props
+	const { w, h, color, fill, dash, size, font, matchKey, textColor } = shape.props
 	const graph = live?.graph
 	const model = useMemo(() => (graph ? matchCardModel(graph, matchKey) : null), [graph, matchKey])
 
 	const metrics = matchCardMetrics(size, theme.fontSize)
 	const strokeWidth = theme.strokeWidth * STROKE_SIZES[size]
 	const stroke = getColorValue(colors, color, 'solid')
+	const text = textColor in colors ? getColorValue(colors, textColor, 'solid') : stroke
 	const muted = getColorValue(colors, 'grey', 'solid')
+	const statusColors = useStatusColors()
 	const playerColors = usePlayerColors()
 	// A player's own color, if an admin gave them one that the current theme knows.
 	const playerColor = (key: string) => {
@@ -146,7 +152,7 @@ function MatchCard({ shape }: { shape: MatchCardShape }) {
 				style={{
 					pointerEvents: 'none',
 					opacity: missing ? 0.4 : 1,
-					color: stroke,
+					color: text,
 					fontFamily: getFontFamily(theme, font),
 					fontSize: metrics.fontSize,
 					lineHeight: 1.2,
@@ -159,7 +165,9 @@ function MatchCard({ shape }: { shape: MatchCardShape }) {
 					<span className="MatchCard-title">
 						{model?.match.title ?? (missing ? 'Not in source' : '…')}
 					</span>
-					{model && <StatusBadge status={model.match.status} colors={colors} />}
+					{model && (
+						<StatusBadge status={model.match.status} colors={colors} statusColors={statusColors} />
+					)}
 				</div>
 				<div style={{ padding: `0 ${metrics.padding}px` }}>
 					{model?.rows.map((row, i) => (
@@ -219,28 +227,28 @@ function CardRow({
 	)
 }
 
-function StatusBadge({ status, colors }: { status: MatchStatus; colors: TLThemeColors }) {
-	if (status === 'live') {
-		return (
-			<span className="MatchCard-status" style={{ color: getColorValue(colors, 'green', 'solid') }}>
-				● live
-			</span>
-		)
-	}
-	if (status === 'ready') {
-		return (
-			<span
-				className="MatchCard-status"
-				style={{ color: getColorValue(colors, 'orange', 'solid') }}
-			>
-				up next
-			</span>
-		)
-	}
-	return null
+function StatusBadge({
+	status,
+	colors,
+	statusColors,
+}: {
+	status: MatchStatus
+	colors: TLThemeColors
+	statusColors: StatusColors
+}) {
+	if (status !== 'live' && status !== 'ready') return null
+	const color = statusColors[status]
+	if (color === HIDDEN) return null
+	return (
+		<span
+			className="MatchCard-status"
+			style={{ color: color in colors ? getColorValue(colors, color, 'solid') : undefined }}
+		>
+			{STATUS_BADGE_LABELS[status]}
+		</span>
+	)
 }
 
-/** The same fill conventions as tldraw's built-in shapes. */
 function fillValue(colors: TLThemeColors, color: string, fill: TLDefaultFillStyle) {
 	switch (fill) {
 		case 'none':

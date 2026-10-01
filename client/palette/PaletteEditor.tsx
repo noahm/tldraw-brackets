@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useValue, type Editor } from 'tldraw'
 import { PALETTE_SLOTS, type DiagramPalette, type PaletteSlot } from '../../shared/palette'
+import { StatusColorsEditor } from './StatusColorsEditor'
 import { setPalette } from './usePalette'
 
 // Lets editors name and recolor the diagram's palette slots. Changes sync to everyone and show
@@ -51,6 +52,7 @@ export function PaletteEditor({ editor, palette }: { editor: Editor; palette: Di
 							/>
 						</label>
 					))}
+					<StatusColorsEditor editor={editor} palette={palette} />
 				</div>
 			)}
 		</div>

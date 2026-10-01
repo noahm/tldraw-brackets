@@ -14,19 +14,26 @@ import {
 	type TLUiStylePanelProps,
 } from 'tldraw'
 import type { GraphEntrant } from '../../shared/bracketGraph'
-import { MATCH_CARD_TYPE, type MatchCardShape } from '../../shared/matchCardShape'
+import {
+	MATCH_CARD_TYPE,
+	MatchCardTextColorStyle,
+	SAME_AS_CARD,
+	type MatchCardShape,
+} from '../../shared/matchCardShape'
 import { matchCardModel } from '../../shared/matchCardModel'
 import { documentMetaWithPlayerColor, playerColorsFromDocument } from '../../shared/playerColors'
 import { updateDocumentMeta } from '../documentMeta'
 import { useLiveData } from '../live/liveDataStore'
 
-// tldraw's style panel, plus a "Players" section when a single match card is selected: each of
+// tldraw's style panel, plus two sections for match cards: "Card text", to color the text of the
+// selected cards apart from their frame, and, when a single card is selected, "Players": each of
 // its players can be given a color, which then applies wherever that player appears.
 
 export function BracketStylePanel(props: TLUiStylePanelProps) {
 	return (
 		<DefaultStylePanel {...props}>
 			<DefaultStylePanelContent />
+			<CardTextColorSection />
 			<PlayerColorsSection />
 		</DefaultStylePanel>
 	)
@@ -37,6 +44,55 @@ export function usePlayerColors() {
 	return useValue('player colors', () => playerColorsFromDocument(editor.getDocumentSettings()), [
 		editor,
 	])
+}
+
+function CardTextColorSection() {
+	const editor = useEditor()
+	const shared = useValue(
+		'card text color',
+		() => editor.getSharedStyles().get(MatchCardTextColorStyle),
+		[editor]
+	)
+	const isReadonly = useValue('readonly', () => editor.getIsReadonly(), [editor])
+	const colors = useValue(
+		'theme colors',
+		() => editor.getCurrentTheme().colors[editor.getColorMode()],
+		[editor]
+	)
+	// No match card selected.
+	if (isReadonly || !shared) return null
+
+	const set = (value: string) => {
+		editor.markHistoryStoppingPoint('set card text color')
+		editor.setStyleForSelectedShapes(MatchCardTextColorStyle, value)
+	}
+	const sameAsCard = shared.type === 'shared' && shared.value === SAME_AS_CARD
+	const value =
+		shared.type === 'shared' && !sameAsCard
+			? { type: 'shared' as const, value: shared.value as TLDefaultColorStyle }
+			: { type: 'mixed' as const }
+
+	return (
+		<StylePanelSection>
+			<StylePanelSubheading>Card text</StylePanelSubheading>
+			<StylePanelButtonPicker
+				title="Card text color"
+				uiType="color"
+				style={DefaultColorStyle}
+				items={getColorStyleItems(colors)}
+				value={value}
+				onHistoryMark={(id) => editor.markHistoryStoppingPoint(id)}
+				onValueChange={(_style, color) => set(color)}
+			/>
+			<button
+				className="CardTextColor-reset"
+				aria-pressed={sameAsCard}
+				onClick={() => set(SAME_AS_CARD)}
+			>
+				Same as card
+			</button>
+		</StylePanelSection>
+	)
 }
 
 function PlayerColorsSection() {

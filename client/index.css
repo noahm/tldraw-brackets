@@ -319,6 +319,58 @@ body {
 	color: var(--text);
 }
 
+.StatusColorsEditor {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid var(--gray-light);
+}
+
+.StatusColorsEditor-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px;
+}
+
+.StatusColorsEditor-label {
+	width: 100%;
+	font-size: 12px;
+	font-weight: 700;
+}
+
+.StatusColorsEditor-swatch {
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	border: 2px solid transparent;
+	border-radius: 50%;
+	cursor: pointer;
+}
+
+.StatusColorsEditor-swatch[aria-checked='true'] {
+	outline: 2px solid var(--text);
+	outline-offset: 1px;
+}
+
+.StatusColorsEditor-hide {
+	height: 20px;
+	padding: 0 6px;
+	border: 1px solid var(--gray-dark);
+	border-radius: 4px;
+	background: none;
+	color: var(--text);
+	font-size: 11px;
+	cursor: pointer;
+}
+
+.StatusColorsEditor-hide[aria-checked='true'] {
+	background: var(--text);
+	color: var(--background);
+}
+
 .PlayerColorRow-toggle {
 	display: flex;
 	align-items: center;
@@ -525,4 +577,25 @@ html.obs body {
 .VersionsPanel-actions {
 	display: flex;
 	gap: 6px;
+}
+
+.CardTextColor-reset {
+	height: 28px;
+	margin: 0 8px 4px;
+	border: none;
+	border-radius: 6px;
+	background: none;
+	color: var(--tl-color-text-1);
+	font: inherit;
+	font-size: 12px;
+	text-align: left;
+	cursor: pointer;
+}
+
+.CardTextColor-reset:hover {
+	background: var(--tl-color-muted-2);
+}
+
+.CardTextColor-reset[aria-pressed='true'] {
+	font-weight: 700;
 }

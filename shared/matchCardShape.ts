@@ -1,4 +1,5 @@
 import {
+	createShapePropsMigrationIds,
 	createShapePropsMigrationSequence,
 	DefaultColorStyle,
 	DefaultDashStyle,
@@ -12,6 +13,7 @@ import {
 	type TLDefaultFontStyle,
 	type TLDefaultSizeStyle,
 	type TLShape,
+	StyleProp,
 } from '@tldraw/tlschema'
 import { T } from '@tldraw/validate'
 
@@ -23,6 +25,18 @@ import { T } from '@tldraw/validate'
 
 export const MATCH_CARD_TYPE = 'bracket-match'
 
+/** Card text uses the card's own color unless it's given one of its own. */
+export const SAME_AS_CARD = 'card'
+
+/**
+ * The color of a card's title and names: SAME_AS_CARD, or a tldraw color name (built-in or a
+ * palette slot). A style, so it can be set on many cards at once.
+ */
+export const MatchCardTextColorStyle = StyleProp.define<string>('bracket:textColor', {
+	defaultValue: SAME_AS_CARD,
+	type: T.string,
+})
+
 export interface MatchCardProps {
 	/** BracketGraph match key, e.g. "btp:round:123" */
 	matchKey: string
@@ -33,6 +47,7 @@ export interface MatchCardProps {
 	dash: TLDefaultDashStyle
 	size: TLDefaultSizeStyle
 	font: TLDefaultFontStyle
+	textColor: string
 }
 
 declare module '@tldraw/tlschema' {
@@ -52,9 +67,28 @@ export const matchCardShapeProps: RecordProps<MatchCardShape> = {
 	dash: DefaultDashStyle,
 	size: DefaultSizeStyle,
 	font: DefaultFontStyle,
+	textColor: MatchCardTextColorStyle,
 }
 
-export const matchCardShapeMigrations = createShapePropsMigrationSequence({ sequence: [] })
+// Every change to the props above needs a migration here, or existing diagrams stop loading.
+// shared/migrations.test.ts checks a diagram saved before any of them still loads.
+const versions = createShapePropsMigrationIds(MATCH_CARD_TYPE, {
+	AddTextColor: 1,
+})
+
+export const matchCardShapeMigrations = createShapePropsMigrationSequence({
+	sequence: [
+		{
+			id: versions.AddTextColor,
+			up(props) {
+				props.textColor = SAME_AS_CARD
+			},
+			down(props) {
+				delete props.textColor
+			},
+		},
+	],
+})
 
 /** Card text sizes per size style, in multiples of the theme's base font size. */
 export const MATCH_CARD_FONT_SCALE: Record<TLDefaultSizeStyle, number> = {
