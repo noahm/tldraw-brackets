@@ -1,8 +1,8 @@
 import { handleUnfurlRequest } from 'cloudflare-workers-unfurl'
-import { AutoRouter, error, IRequest } from 'itty-router'
-import { handleAssetDownload, handleAssetUpload } from './assetUploads'
-
+import { AutoRouter, error, IRequest, json } from 'itty-router'
 import { DIAGRAM_ID_PATTERN } from '../shared/routes'
+import { bearerToken, hashToken, newDiagramId, newEditToken } from './access'
+import { handleAssetDownload, handleAssetUpload } from './assetUploads'
 
 // make sure our sync durable object is made available to cloudflare
 export { DiagramRoom } from './DiagramRoom'
@@ -15,6 +15,15 @@ const router = AutoRouter<IRequest, [env: Env, ctx: ExecutionContext]>({
 		return error(e)
 	},
 })
+	// create a diagram: the response carries its edit token, the only time it's ever revealed
+	.post('/api/diagrams', createDiagram)
+
+	// trade an edit token (in the Authorization header) for a single-use connection ticket
+	.post('/api/diagrams/:diagramId/tickets', async (request, env) => {
+		const ticket = await diagramRoom(request, env).issueTicket(bearerToken(request))
+		return ticket ? { ticket } : error(403, 'Edit link required')
+	})
+
 	// each diagram's realtime websocket sync is handled by its own Durable Object
 	.get('/api/diagrams/:diagramId/connect', forwardToDiagramRoom)
 
@@ -22,23 +31,47 @@ const router = AutoRouter<IRequest, [env: Env, ctx: ExecutionContext]>({
 	.get('/api/diagrams/:diagramId/source', forwardToDiagramRoom)
 	.put('/api/diagrams/:diagramId/source', forwardToDiagramRoom)
 
-	// assets can be uploaded to the bucket under /uploads:
-	.post('/api/uploads/:uploadId', handleAssetUpload)
-
-	// they can be retrieved from the bucket too:
+	// editors can upload images and videos to the bucket...
+	.post('/api/diagrams/:diagramId/uploads/:uploadId', requireEditor, handleAssetUpload)
+	// ...which anyone can then fetch, as diagrams are public to view
 	.get('/api/uploads/:uploadId', handleAssetDownload)
 
-	// bookmarks need to extract metadata from pasted URLs:
-	.get('/api/unfurl', handleUnfurlRequest)
+	// editors' pasted links get bookmark previews (editor-only: it fetches arbitrary URLs)
+	.get('/api/diagrams/:diagramId/unfurl', requireEditor, handleUnfurlRequest)
+
 	.all('*', () => {
 		return new Response('Not found', { status: 404 })
 	})
 
-function forwardToDiagramRoom(request: IRequest, env: Env) {
+async function createDiagram(_request: IRequest, env: Env) {
+	const editToken = newEditToken()
+	const tokenHash = await hashToken(editToken)
+	// Ids are random enough that a collision is all but impossible, but never hand out a
+	// diagram someone else already owns.
+	for (let attempt = 0; attempt < 3; attempt++) {
+		const diagramId = newDiagramId()
+		if (await env.DIAGRAM_ROOM.get(env.DIAGRAM_ROOM.idFromName(diagramId)).claim(tokenHash)) {
+			return json({ diagramId, editToken }, { status: 201 })
+		}
+	}
+	return error(500, 'Could not allocate a diagram id')
+}
+
+function diagramRoom(request: IRequest, env: Env) {
 	const { diagramId } = request.params
-	if (!DIAGRAM_ID_PATTERN.test(diagramId)) return error(400, 'Invalid diagram id')
-	const room = env.DIAGRAM_ROOM.get(env.DIAGRAM_ROOM.idFromName(diagramId))
-	return room.fetch(request.url, {
+	if (!DIAGRAM_ID_PATTERN.test(diagramId)) throw error(400, 'Invalid diagram id')
+	return env.DIAGRAM_ROOM.get(env.DIAGRAM_ROOM.idFromName(diagramId))
+}
+
+/** Route middleware: continue only for requests carrying the diagram's edit token. */
+async function requireEditor(request: IRequest, env: Env) {
+	if (!(await diagramRoom(request, env).isEditToken(bearerToken(request)))) {
+		return error(403, 'Edit link required')
+	}
+}
+
+function forwardToDiagramRoom(request: IRequest, env: Env) {
+	return diagramRoom(request, env).fetch(request.url, {
 		method: request.method,
 		headers: request.headers,
 		body: request.body,

@@ -1,7 +1,18 @@
 import { AssetRecordType, TLAsset, TLBookmarkAsset, getHashForString } from 'tldraw'
+import { diagramUnfurlPath } from '../shared/routes'
+import { authHeaders } from './access'
 
-// How does our server handle bookmark unfurling?
-export async function getBookmarkPreview({ url }: { url: string }): Promise<TLAsset> {
+// How does our server handle bookmark unfurling? Only editors can ask, as it makes the server
+// fetch arbitrary URLs.
+export function createBookmarkPreviewer(diagramId: string, editToken: string | null) {
+	return ({ url }: { url: string }) => getBookmarkPreview(url, diagramId, editToken)
+}
+
+async function getBookmarkPreview(
+	url: string,
+	diagramId: string,
+	editToken: string | null
+): Promise<TLAsset> {
 	// we start with an empty asset record
 	const asset: TLBookmarkAsset = {
 		id: AssetRecordType.createId(getHashForString(url)),
@@ -19,7 +30,9 @@ export async function getBookmarkPreview({ url }: { url: string }): Promise<TLAs
 
 	try {
 		// try to fetch the preview data from the server
-		const response = await fetch(`/api/unfurl?url=${encodeURIComponent(url)}`)
+		const response = await fetch(diagramUnfurlPath(diagramId, url), {
+			headers: authHeaders(editToken),
+		})
 		const data: any = await response.json()
 
 		// fill in our asset with whatever info we found

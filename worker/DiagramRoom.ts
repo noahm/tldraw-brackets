@@ -10,11 +10,14 @@ import { AutoRouter, error, IRequest } from 'itty-router'
 import type { LiveDataMessage, LiveDataState } from '../shared/liveData'
 import { diagramSchema } from '../shared/schema'
 import { type DiagramSource, parseDiagramSource } from '../shared/source'
+import { bearerToken, hashToken, sameHash, TICKET_TTL_MS } from './access'
 import { fetchGraph } from './sources'
 
 /** How often to re-read the source while anyone has the diagram open. */
 const POLL_INTERVAL_MS = 5_000
 const SOURCE_STORAGE_KEY = 'source'
+const EDIT_TOKEN_HASH_KEY = 'editTokenHash'
+const TICKET_KEY_PREFIX = 'ticket:'
 
 interface SocketAttachment {
 	sessionId: string
@@ -37,6 +40,9 @@ function getAttachment(ws: WebSocket): SocketAttachment | null {
 // The DO is also the only thing that reads the diagram's tournament source. It polls the
 // source on an alarm while anyone is connected, and pushes changes to every session as a
 // custom message. Live data never enters the tldraw document.
+//
+// Access: a diagram exists once it's been claimed with an edit token (see ./access.ts).
+// Anyone may view it; only connections opened with a ticket bought by that token may edit.
 export class DiagramRoom extends DurableObject<Env> {
 	private room: TLSocketRoom<TLRecord, void> | null = null
 	/** Map sessionId → ws so onSessionSnapshot can serialize to the right socket. */
@@ -94,7 +100,9 @@ export class DiagramRoom extends DurableObject<Env> {
 
 	private readonly router = AutoRouter({ catch: (e) => error(e) })
 		.get('/api/diagrams/:diagramId/connect', (request) => this.handleConnect(request))
-		.get('/api/diagrams/:diagramId/source', () => this.getLiveData())
+		.get('/api/diagrams/:diagramId/source', async () =>
+			(await this.exists()) ? this.getLiveData() : error(404, 'No such diagram')
+		)
 		.put('/api/diagrams/:diagramId/source', (request) => this.handleSetSource(request))
 
 	// Entry point for all requests to the Durable Object
@@ -102,10 +110,53 @@ export class DiagramRoom extends DurableObject<Env> {
 		return this.router.fetch(request)
 	}
 
+	// --- Access (called over RPC from the worker) ---
+
+	/** Makes this diagram exist, owned by whoever holds the token. False if already claimed. */
+	async claim(tokenHash: string): Promise<boolean> {
+		if (await this.ctx.storage.get(EDIT_TOKEN_HASH_KEY)) return false
+		await this.ctx.storage.put(EDIT_TOKEN_HASH_KEY, tokenHash)
+		return true
+	}
+
+	async exists(): Promise<boolean> {
+		return !!(await this.ctx.storage.get(EDIT_TOKEN_HASH_KEY))
+	}
+
+	async isEditToken(token: string | null): Promise<boolean> {
+		const stored = await this.ctx.storage.get<string>(EDIT_TOKEN_HASH_KEY)
+		return !!token && !!stored && sameHash(await hashToken(token), stored)
+	}
+
+	/** A single-use ticket to open one editing connection, or null for a wrong token. */
+	async issueTicket(token: string | null): Promise<string | null> {
+		if (!(await this.isEditToken(token))) return null
+		// Tickets from connections that never happened would otherwise pile up.
+		const now = Date.now()
+		const tickets = await this.ctx.storage.list<number>({ prefix: TICKET_KEY_PREFIX })
+		const expired = [...tickets].filter(([, expiresAt]) => expiresAt <= now).map(([key]) => key)
+		if (expired.length) await this.ctx.storage.delete(expired)
+
+		const ticket = crypto.randomUUID()
+		await this.ctx.storage.put(TICKET_KEY_PREFIX + ticket, now + TICKET_TTL_MS)
+		return ticket
+	}
+
+	private async redeemTicket(ticket: string | undefined): Promise<boolean> {
+		if (!ticket) return false
+		const key = TICKET_KEY_PREFIX + ticket
+		const expiresAt = await this.ctx.storage.get<number>(key)
+		if (expiresAt == null) return false
+		await this.ctx.storage.delete(key)
+		return Date.now() < expiresAt
+	}
+
 	// Handle new WebSocket connection requests
 	async handleConnect(request: IRequest) {
 		const sessionId = request.query.sessionId as string
 		if (!sessionId) return error(400, 'Missing sessionId')
+		if (!(await this.exists())) return error(404, 'No such diagram')
+		const isReadonly = !(await this.redeemTicket(request.query.ticket as string | undefined))
 
 		// Create the websocket pair for the client
 		const { 0: clientWebSocket, 1: serverWebSocket } = new WebSocketPair()
@@ -119,7 +170,7 @@ export class DiagramRoom extends DurableObject<Env> {
 
 		// Connect to the room. The first webSocketMessage from the client will
 		// complete the handshake and trigger debounced snapshot storage.
-		this.getOrCreateRoom().handleSocketConnect({ sessionId, socket: serverWebSocket })
+		this.getOrCreateRoom().handleSocketConnect({ sessionId, socket: serverWebSocket, isReadonly })
 
 		return new Response(null, { status: 101, webSocket: clientWebSocket })
 	}
@@ -127,6 +178,7 @@ export class DiagramRoom extends DurableObject<Env> {
 	// --- Live tournament data ---
 
 	private async handleSetSource(request: IRequest) {
+		if (!(await this.isEditToken(bearerToken(request)))) return error(403, 'Edit link required')
 		const body = await request.json().catch(() => undefined)
 		const source = parseDiagramSource(body)
 		if (body !== null && !source) return error(400, 'Invalid source')

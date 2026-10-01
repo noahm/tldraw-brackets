@@ -359,3 +359,91 @@ body {
 	padding: 0 4px;
 	color: var(--tl-color-text-3);
 }
+
+.DiagramWrapper-home {
+	display: flex;
+	color: inherit;
+}
+
+.DiagramWrapper-title {
+	font-weight: 700;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 280px;
+}
+
+.DiagramWrapper-badge {
+	padding: 2px 8px;
+	border-radius: 999px;
+	background: var(--gray-light);
+	color: var(--black-transparent-dark);
+	font-size: 12px;
+}
+
+.Message {
+	max-width: 560px;
+	margin: 80px auto;
+	padding: 0 16px;
+	font-family: system-ui, sans-serif;
+	color: hsl(0, 0%, 20%);
+}
+
+.Home-create {
+	padding: 8px 16px;
+	border: none;
+	border-radius: 6px;
+	background: hsl(217, 89%, 61%);
+	color: white;
+	font-weight: 700;
+	font-size: 15px;
+	cursor: pointer;
+}
+
+.Home-error {
+	color: hsl(0, 70%, 50%);
+}
+
+.Home-list {
+	padding: 0;
+	list-style: none;
+}
+
+.Home-list li {
+	display: flex;
+	justify-content: space-between;
+	padding: 6px 0;
+	border-bottom: 1px solid #e5e5e5;
+}
+
+.Home-list span,
+.Home-note {
+	color: hsl(0, 0%, 50%);
+	font-size: 13px;
+}
+
+/* OBS browser source: nothing but the diagram, over whatever is behind it. */
+html.obs,
+html.obs body {
+	background: transparent;
+}
+
+.ObsView {
+	position: fixed;
+	inset: 0;
+}
+
+.ObsView .tl-container {
+	--tl-color-background: transparent;
+	background: transparent;
+}
+
+.ObsView .tl-background {
+	background: transparent;
+}
+
+/* frames mark out what's on stream; they aren't part of the picture */
+.ObsView .tl-frame-heading,
+.ObsView .tl-frame__body {
+	display: none;
+}

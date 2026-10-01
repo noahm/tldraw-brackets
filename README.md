@@ -14,7 +14,7 @@ The first (and currently only) supported backend is [Blame the Pads](https://git
 
 ## Status
 
-Phases 1–4 are done:
+Phases 1–5 are done:
 
 - **Phase 1:** the [tldraw multiplayer starter kit](https://tldraw.dev/starter-kits/multiplayer),
   adapted to this project's naming and structure.
@@ -29,6 +29,9 @@ Phases 1–4 are done:
   editors, and undo like any other edit. Individual players can be given a color too, from a
   "Players" section in the style panel when a match card is selected; it applies wherever that
   player appears.
+- **Phase 5:** diagrams are created from the home page and come with a secret edit link. Anyone
+  with the plain link can watch; only edit-link holders can change anything. An OBS link shows a
+  chosen frame of the diagram, transparent and without any UI or other people's cursors.
 
 The `btp` adapter has been checked against every started tourney in Blame the Pads' real database
 (36 at the time). See [Plan](#plan) for what comes next.
@@ -45,8 +48,9 @@ npm run deploy     # build + wrangler deploy (needs a Cloudflare account)
 npm run cf-typegen # regenerate worker-configuration.d.ts after editing wrangler.toml
 ```
 
-Open `/` to be redirected to a diagram at `/d/<diagramId>`. Open the same URL in a second tab to
-see multiplayer sync.
+Open `/` and click "New diagram". This browser remembers the diagram's edit token; use the
+header's "Edit link" to edit from elsewhere, and "View link" for a read-only view. Open a link in
+a second browser profile to see multiplayer sync.
 
 To give a diagram tournament data, type into the source box in its header:
 
@@ -61,9 +65,15 @@ Then click "Show data" to see the live graph.
 The same thing over HTTP:
 
 ```bash
-curl -X PUT localhost:5173/api/diagrams/<diagramId>/source -d '{"kind":"btp","tourneyId":123}'
+curl -X POST localhost:5173/api/diagrams        # {"diagramId": "...", "editToken": "..."}
+curl -X PUT localhost:5173/api/diagrams/<diagramId>/source \
+  -H "authorization: Bearer <editToken>" -d '{"kind":"btp","tourneyId":123}'
 curl localhost:5173/api/diagrams/<diagramId>/source   # current source, graph and any error
 ```
+
+For an OBS browser source, draw a frame around what should be on stream, name it, select it, and
+use the header's "OBS link" (`/d/<diagramId>/obs?frame=<name>`). Without a frame, the OBS view
+fits the whole diagram.
 
 No tldraw license key is needed on localhost. Production builds need `VITE_TLDRAW_LICENSE_KEY`
 (see `.env.example`); a free [hobby license](https://tldraw.dev/get-a-license/hobby) is fine and
@@ -78,6 +88,9 @@ worker/          Cloudflare Worker: routing, the DiagramRoom durable object, R2 
 worker/sources/  source adapters (read-only), e.g. btp/, plus fixtures for dev and tests
 client/          React + tldraw SPA, served by the same worker
 client/live/     live-data store, source picker and debug panel
+client/bracket/  match card shape, layout, Generate layout, player colors
+client/palette/  diagram palette
+client/pages/    Home, Diagram (view/edit), ObsView
 ```
 
 Client and worker are always deployed together as one Worker, so their tldraw versions always
@@ -90,7 +103,7 @@ match, which tldraw sync requires.
 ```
                  ┌──────────────── one Cloudflare Worker deploy ────────────────┐
  Browser ──────► │ static SPA (React + tldraw)                                  │
- (editor/viewer/ │ /api/diagrams        → D1: diagram registry, edit-token hashes│
+ (editor/viewer/ │ POST /api/diagrams   → claims a new DiagramRoom, returns token│
   OBS overlay)   │ /api/uploads/*       → R2: logos, backgrounds                │
        ▲   WS    │ /api/diagrams/:id/connect ─► DiagramRoom (Durable Object)    │
        └─────────┤     ├─ TLSocketRoom + SQLite storage  (the diagram)          │
@@ -203,13 +216,27 @@ interface BracketGraph {
 
 ### Access (v1: no accounts)
 
-- **Public view link:** `/d/:id`.
-- **Secret edit link:** `/d/:id/edit#<token>`. The token lives in the URL fragment so it never
-  reaches logs. D1 stores only its hash. The worker checks it on websocket connect and sets
-  `isReadonly` for everyone else.
-- **Cursors:** labelled with a self-chosen display name.
-- **OBS overlay:** `/d/:id/obs?frame=<shapeId>`. Read-only, no UI, camera locked to an
-  admin-placed frame, transparent background.
+- **Creating:** `POST /api/diagrams` picks a random id and edit token, and the new diagram's
+  `DiagramRoom` stores only the token's SHA-256 hash. The token is revealed once, in that
+  response. A diagram that was never created this way is "not found".
+  - The plan had a D1 registry here. Access checks only ever concern one diagram, so its own
+    durable object storage is enough. D1 can be added if a cross-diagram index is ever needed.
+- **Public view link:** `/d/:id`. Read-only, enforced by the server (`isReadonly` sessions).
+  Viewers send no presence, so editors don't see their cursors.
+- **Secret edit link:** `/d/:id/edit#<token>`. The token sits in the URL fragment so it never
+  reaches the server in a URL. The page remembers it in localStorage, then drops it from the
+  address bar (so it isn't left on screen or on stream). Plain `/d/:id` links then open as an
+  editor in that browser.
+- **Connecting as an editor:** browsers can't set headers on WebSockets, so the client first
+  trades its token (in an `Authorization` header) for a single-use ticket valid for 60 seconds
+  (`POST /api/diagrams/:id/tickets`), and connects with that. A fresh ticket is fetched on every
+  reconnect. A rejected token falls back to read-only and is forgotten.
+- **Other editor-only endpoints:** changing the source, uploading images, and link previews (the
+  unfurler fetches arbitrary URLs, so it isn't open to everyone). Uploaded files are public.
+- **OBS overlay:** `/d/:id/obs?frame=<name>`. Read-only, no UI, transparent background, camera
+  locked to the named frame (following it if it moves). Frames are hidden, as are editors'
+  cursors, selections, brushes and scribbles.
+- **This browser's diagrams:** the home page lists diagrams opened here, from localStorage.
 
 ### Durability
 
@@ -228,7 +255,7 @@ interface BracketGraph {
    "unplaced matches" banner.
 4. ✅ **Diagram palette.** Named custom colors per diagram, usable by every shape. Arrows already
    take tldraw's own styles, so edges needed nothing extra.
-5. **Access and output.** D1 registry, edit links, read-only viewer, OBS route.
+5. ✅ **Access and output.** Edit links, read-only viewer, OBS route.
 6. **Hardening.** R2 versions and restore, schema migrations, schema-drift CI check against
    Blame the Pads.
 

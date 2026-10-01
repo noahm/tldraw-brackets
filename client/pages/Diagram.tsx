@@ -1,58 +1,110 @@
-import { getAssetUrlsByImport } from '@tldraw/assets/imports.vite'
-import { useSync } from '@tldraw/sync'
-import { ReactNode, useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { Tldraw, type Editor, type TLComponents } from 'tldraw'
-import { diagramConnectPath } from '../../shared/routes'
-import { diagramSchema } from '../../shared/schema'
+import { ReactNode, useEffect, useMemo, useState } from 'react'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Tldraw, useValue, type Editor, type TLComponents } from 'tldraw'
+import { diagramSourcePath } from '../../shared/routes'
+import {
+	editLink,
+	editTokenFor,
+	forgetEditToken,
+	obsLink,
+	rememberDiagram,
+	viewLink,
+} from '../access'
 import { BracketPanel } from '../bracket/BracketPanel'
-import { MatchCardShapeUtil } from '../bracket/MatchCardShapeUtil'
 import { BracketStylePanel } from '../bracket/PlayerColorsSection'
-import { getBookmarkPreview } from '../getBookmarkPreview'
+import { createBookmarkPreviewer } from '../getBookmarkPreview'
 import { LiveDataPanel } from '../live/LiveDataPanel'
-import { LiveDataProvider, useNewLiveDataStore } from '../live/liveDataStore'
+import { LiveDataProvider, useLiveData, useNewLiveDataStore } from '../live/liveDataStore'
 import { SourceControls } from '../live/SourceControls'
-import { multiplayerAssetStore } from '../multiplayerAssetStore'
 import { PaletteEditor } from '../palette/PaletteEditor'
 import { initialThemes } from '../palette/paletteTheme'
 import { usePalette } from '../palette/usePalette'
+import { assetUrls, licenseKey, shapeUtils } from '../tldrawConfig'
+import { useDiagramStore } from '../useDiagramStore'
 
-// Unset in local dev, where tldraw needs no key. Production builds require one
-// (a free hobby key is fine) or the editor stops rendering after a few seconds.
-const licenseKey = import.meta.env.VITE_TLDRAW_LICENSE_KEY
-
-// tldraw's fonts, icons and translations, bundled by Vite and served from our own worker rather
-// than cdn.tldraw.com. Keeps them in lockstep with the SDK version and works without the CDN.
-const assetUrls = getAssetUrlsByImport()
-
-const shapeUtils = [MatchCardShapeUtil]
 const components: TLComponents = { TopPanel: BracketPanel, StylePanel: BracketStylePanel }
 
+/**
+ * /d/:id (view, or edit if this browser holds the edit token) and /d/:id/edit#token (an edit
+ * link: the token is remembered, then dropped from the address bar).
+ */
 export function Diagram() {
 	const { diagramId = '' } = useParams<{ diagramId: string }>()
+	// The router keeps this page mounted when only the id changes; start fresh for each diagram so
+	// one diagram's edit token can never be used for another.
+	return <DiagramPage key={diagramId} diagramId={diagramId} />
+}
+
+function DiagramPage({ diagramId }: { diagramId: string }) {
+	const location = useLocation()
+	const navigate = useNavigate()
+	const [editToken, setEditToken] = useState(() => {
+		const fromLink = location.pathname.endsWith('/edit') ? location.hash.slice(1) : ''
+		if (fromLink) rememberDiagram(diagramId, { editToken: fromLink })
+		return fromLink || editTokenFor(diagramId)
+	})
+	const exists = useDiagramExists(diagramId)
+
+	useEffect(() => {
+		if (location.pathname.endsWith('/edit')) navigate(`/d/${diagramId}`, { replace: true })
+	}, [diagramId, location.pathname, navigate])
+
+	if (exists === null) return null
+	if (!exists) return <DiagramNotFound />
+	return (
+		<DiagramEditor
+			diagramId={diagramId}
+			editToken={editToken}
+			onEditTokenRejected={() => {
+				forgetEditToken(diagramId)
+				setEditToken(null)
+			}}
+		/>
+	)
+}
+
+function useDiagramExists(diagramId: string) {
+	const [exists, setExists] = useState<boolean | null>(null)
+	useEffect(() => {
+		let cancelled = false
+		fetch(diagramSourcePath(diagramId)).then(
+			(response) => !cancelled && setExists(response.status !== 404),
+			// Offline or similar: let the sync client deal with it rather than claiming "not found".
+			() => !cancelled && setExists(true)
+		)
+		return () => {
+			cancelled = true
+		}
+	}, [diagramId])
+	return exists
+}
+
+function DiagramEditor({
+	diagramId,
+	editToken,
+	onEditTokenRejected,
+}: {
+	diagramId: string
+	editToken: string | null
+	onEditTokenRejected(): void
+}) {
 	const liveData = useNewLiveDataStore()
 	const [editor, setEditor] = useState<Editor | null>(null)
 	const { palette, overrides } = usePalette(editor)
-
-	// Create a store connected to multiplayer.
-	const store = useSync({
-		// We need to know the websockets URI...
-		uri: `${window.location.origin}${diagramConnectPath(diagramId)}`,
-		// ...and how to handle static assets like images & videos
-		assets: multiplayerAssetStore,
-		// ...and where to deliver the tournament data the server pushes alongside the document.
-		onCustomMessageReceived: liveData.receive,
-		// The exact schema the server validates against, custom shapes included.
-		schema: diagramSchema,
-		// Registers the palette's color names before the document (and shapes using them) loads.
-		themes: initialThemes,
-	})
+	const store = useDiagramStore({ diagramId, editToken, liveData, onEditTokenRejected })
+	const bookmarkPreviewer = useMemo(
+		() => createBookmarkPreviewer(diagramId, editToken),
+		[diagramId, editToken]
+	)
 
 	return (
 		<LiveDataProvider store={liveData}>
+			<RememberDiagram diagramId={diagramId} />
 			<DiagramWrapper
 				diagramId={diagramId}
-				toolbar={editor && <PaletteEditor editor={editor} palette={palette} />}
+				editor={editor}
+				editToken={editToken}
+				toolbar={editor && editToken && <PaletteEditor editor={editor} palette={palette} />}
 			>
 				<Tldraw
 					licenseKey={licenseKey}
@@ -67,7 +119,7 @@ export function Diagram() {
 					options={{ deepLinks: true }}
 					onMount={(editor) => {
 						// when the editor is ready, we need to register our bookmark unfurling service
-						editor.registerExternalAssetHandler('url', getBookmarkPreview)
+						editor.registerExternalAssetHandler('url', bookmarkPreviewer)
 						// handy for poking at the editor from devtools (and browser tests)
 						if (import.meta.env.DEV) Object.assign(window, { editor })
 						setEditor(editor)
@@ -79,41 +131,45 @@ export function Diagram() {
 	)
 }
 
+/** Keeps this browser's list of diagrams up to date, titled after their tournaments. */
+function RememberDiagram({ diagramId }: { diagramId: string }) {
+	const title = useLiveData()?.graph?.title
+	useEffect(() => rememberDiagram(diagramId, title ? { title } : {}), [diagramId, title])
+	return null
+}
+
 function DiagramWrapper({
 	children,
 	diagramId,
+	editor,
+	editToken,
 	toolbar,
 }: {
 	children: ReactNode
 	diagramId: string
+	editor: Editor | null
+	editToken: string | null
 	toolbar?: ReactNode
 }) {
-	const [didCopy, setDidCopy] = useState(false)
 	const [showLiveData, setShowLiveData] = useState(false)
-
-	useEffect(() => {
-		if (!didCopy) return
-		const timeout = setTimeout(() => setDidCopy(false), 3000)
-		return () => clearTimeout(timeout)
-	}, [didCopy])
+	const title = useLiveData()?.graph?.title
 
 	return (
 		<div className="DiagramWrapper">
 			<div className="DiagramWrapper-header">
-				<WifiIcon />
-				<div>{diagramId}</div>
-				<button
-					className="DiagramWrapper-copy"
-					onClick={() => {
-						navigator.clipboard.writeText(window.location.href)
-						setDidCopy(true)
-					}}
-					aria-label="copy diagram link"
-				>
-					Copy link
-					{didCopy && <div className="DiagramWrapper-copied">Copied!</div>}
-				</button>
-				<SourceControls diagramId={diagramId} />
+				<Link to="/" className="DiagramWrapper-home" aria-label="all diagrams">
+					<WifiIcon />
+				</Link>
+				<div className="DiagramWrapper-title">{title ?? diagramId}</div>
+				{!editToken && <span className="DiagramWrapper-badge">View only</span>}
+				<CopyButton text={viewLink(diagramId)}>View link</CopyButton>
+				{editToken && (
+					<>
+						<CopyButton text={editLink(diagramId, editToken)}>Edit link</CopyButton>
+						{editor && <ObsLinkButton editor={editor} diagramId={diagramId} />}
+						<SourceControls diagramId={diagramId} editToken={editToken} />
+					</>
+				)}
 				{toolbar}
 				<button
 					className="DiagramWrapper-copy"
@@ -127,6 +183,59 @@ function DiagramWrapper({
 				{children}
 				{showLiveData && <LiveDataPanel />}
 			</div>
+		</div>
+	)
+}
+
+/** OBS link for the selected frame, or for the whole diagram when no frame is selected. */
+function ObsLinkButton({ editor, diagramId }: { editor: Editor; diagramId: string }) {
+	const frameName = useValue(
+		'selected frame name',
+		() => {
+			const shape = editor.getOnlySelectedShape()
+			return shape?.type === 'frame'
+				? (shape.props as { name: string }).name || undefined
+				: undefined
+		},
+		[editor]
+	)
+	return (
+		<CopyButton text={obsLink(diagramId, frameName)}>
+			{frameName ? `OBS link: “${frameName}”` : 'OBS link'}
+		</CopyButton>
+	)
+}
+
+function CopyButton({ text, children }: { text: string; children: ReactNode }) {
+	const [didCopy, setDidCopy] = useState(false)
+	useEffect(() => {
+		if (!didCopy) return
+		const timeout = setTimeout(() => setDidCopy(false), 2000)
+		return () => clearTimeout(timeout)
+	}, [didCopy])
+
+	return (
+		<button
+			className="DiagramWrapper-copy"
+			data-copy-text={text}
+			onClick={() => {
+				navigator.clipboard.writeText(text)
+				setDidCopy(true)
+			}}
+		>
+			{children}
+			{didCopy && <div className="DiagramWrapper-copied">Copied!</div>}
+		</button>
+	)
+}
+
+function DiagramNotFound() {
+	return (
+		<div className="Message">
+			<h1>Diagram not found</h1>
+			<p>
+				Check the link, or <Link to="/">start a new diagram</Link>.
+			</p>
 		</div>
 	)
 }

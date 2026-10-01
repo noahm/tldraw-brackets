@@ -1,13 +1,14 @@
 import { FormEvent, useState } from 'react'
 import { diagramSourcePath } from '../../shared/routes'
 import { describeSource, type DiagramSource } from '../../shared/source'
+import { authHeaders } from '../access'
 import { useLiveData } from './liveDataStore'
 
-// Temporary: anyone with the link can change the source until edit links exist (phase 5).
+// Where the diagram's tournament data comes from. Editors only: the server checks the token.
 
 const FIXTURES = ['de4-midway', 'de4-late']
 
-export function SourceControls({ diagramId }: { diagramId: string }) {
+export function SourceControls({ diagramId, editToken }: { diagramId: string; editToken: string }) {
 	const live = useLiveData()
 	const [value, setValue] = useState('')
 	const [saving, setSaving] = useState(false)
@@ -20,7 +21,7 @@ export function SourceControls({ diagramId }: { diagramId: string }) {
 			// The new state also arrives over the sync connection, so the response isn't needed.
 			const response = await fetch(diagramSourcePath(diagramId), {
 				method: 'PUT',
-				headers: { 'content-type': 'application/json' },
+				headers: { 'content-type': 'application/json', ...authHeaders(editToken) },
 				body: JSON.stringify(source),
 			})
 			if (!response.ok) throw new Error(`${response.status} ${await response.text()}`)

@@ -11,3 +11,24 @@ export function diagramConnectPath(diagramId: string) {
 export function diagramSourcePath(diagramId: string) {
 	return `/api/diagrams/${diagramId}/source`
 }
+
+/** POST to create a diagram; the response has its id and edit token */
+export const DIAGRAMS_PATH = '/api/diagrams'
+
+/** POST with the edit token as a bearer token for a single-use editing connection ticket */
+export function diagramTicketPath(diagramId: string) {
+	return `/api/diagrams/${diagramId}/tickets`
+}
+
+export function diagramUploadPath(diagramId: string, uploadId: string) {
+	return `/api/diagrams/${diagramId}/uploads/${uploadId}`
+}
+
+/** Where uploaded assets are served from, publicly */
+export function uploadDownloadPath(uploadId: string) {
+	return `/api/uploads/${uploadId}`
+}
+
+export function diagramUnfurlPath(diagramId: string, url: string) {
+	return `/api/diagrams/${diagramId}/unfurl?url=${encodeURIComponent(url)}`
+}
