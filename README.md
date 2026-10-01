@@ -14,7 +14,7 @@ The first (and currently only) supported backend is [Blame the Pads](https://git
 
 ## Status
 
-Phases 1–5 are done:
+All six phases are done:
 
 - **Phase 1:** the [tldraw multiplayer starter kit](https://tldraw.dev/starter-kits/multiplayer),
   adapted to this project's naming and structure.
@@ -32,6 +32,12 @@ Phases 1–5 are done:
 - **Phase 5:** diagrams are created from the home page and come with a secret edit link. Anyone
   with the plain link can watch; only edit-link holders can change anything. An OBS link shows a
   chosen frame of the diagram, transparent and without any UI or other people's cursors.
+- **Phase 6:** diagrams are saved as versions in R2, automatically and on demand, and can be
+  restored or downloaded from the header's "Versions" button. Card shape changes go through
+  migrations, checked against a diagram saved by an older build. CI checks formatting, types,
+  tests and the build on every push, and the `btp` adapter against the live database every day.
+  Cards can also have their own text color, and each diagram picks (or hides) its "live" and "up
+  next" badge colors.
 
 The `btp` adapter has been checked against every started tourney in Blame the Pads' real database
 (36 at the time). See [Plan](#plan) for what comes next.
@@ -42,7 +48,10 @@ The `btp` adapter has been checked against every started tourney in Blame the Pa
 npm install
 npm run dev        # vite + the worker (via @cloudflare/vite-plugin) on http://localhost:5173
 npm run typecheck
-npm test           # unit tests (vitest)
+npm test           # unit tests (vitest), offline
+npm run check:btp  # the btp adapter against Blame the Pads' live database (needs the two
+                   # BTP_SUPABASE_* variables in the environment)
+npm run format     # prettier
 npm run build
 npm run deploy     # build + wrangler deploy (needs a Cloudflare account)
 npm run cf-typegen # regenerate worker-configuration.d.ts after editing wrangler.toml
@@ -89,9 +98,17 @@ worker/sources/  source adapters (read-only), e.g. btp/, plus fixtures for dev a
 client/          React + tldraw SPA, served by the same worker
 client/live/     live-data store, source picker and debug panel
 client/bracket/  match card shape, layout, Generate layout, player colors
-client/palette/  diagram palette
+client/palette/  diagram palette and status badge colors
+client/versions/ the Versions popover
+scripts/         the scheduled Blame the Pads schema check
 client/pages/    Home, Diagram (view/edit), ObsView
 ```
+
+### CI
+
+`.github/workflows/ci.yml` runs on every push and pull request. `btp-schema.yml` runs
+`npm run check:btp` daily (and on demand from the Actions tab); it needs the repository secrets
+`BTP_SUPABASE_URL` and `BTP_SUPABASE_ANON_KEY`, the same values the worker uses.
 
 Client and worker are always deployed together as one Worker, so their tldraw versions always
 match, which tldraw sync requires.
@@ -221,6 +238,11 @@ interface BracketGraph {
   name (built-in or palette) per entrant key, in the document meta beside the palette. Selecting
   a match card adds a "Players" section to tldraw's style panel, reusing its color picker. The
   color applies to that player's name on every card, so they can be followed through the bracket.
+- **Card text color** (`MatchCardTextColorStyle`): a style of its own, so it applies to every
+  selected card at once from a "Card text" section of the style panel. It defaults to "same as
+  card".
+- **Status badge colors** (`shared/statusColors.ts`): the colors of the "live" and "up next"
+  badges, or hidden, per diagram, in the document meta. Edited in the palette popover.
 - **Images:** uploads go to R2 via `TLAssetStore` (already wired up from the starter kit).
 
 ### Access (v1: no accounts)
@@ -250,7 +272,19 @@ interface BracketGraph {
 ### Durability
 
 - **Live state:** durable object SQLite (handled by `TLSocketRoom`).
-- **Backups:** periodic and on-demand "save version" snapshots to R2, for restore and JSON export.
+- **Versions** (`worker/versions.ts`): snapshots of the tldraw document in R2, under
+  `versions/<durable object id>/`, never public.
+  - Saved automatically every 10 minutes while the diagram changes, and when the last person
+    leaves. The newest 50 automatic versions are kept.
+  - Editors can save labeled versions, which are kept forever, download any version or the
+    current diagram as JSON, and restore a version. A restore first saves the current state as a
+    "before restore" version, then replaces the room's document; connected clients reload it.
+  - Live tournament data isn't part of the document, so it isn't in versions either. The
+    palette, player colors and status colors are.
+- **Migrations:** every change to the card's props needs a props migration in
+  `shared/matchCardShape.ts`. `shared/migrations.test.ts` loads diagrams exported by older builds
+  (`shared/fixtures/`) through the current schema and validates every record, so a prop change
+  without a migration fails the tests.
 
 ### Phases
 
@@ -265,8 +299,8 @@ interface BracketGraph {
 4. ✅ **Diagram palette.** Named custom colors per diagram, usable by every shape. Arrows already
    take tldraw's own styles, so edges needed nothing extra.
 5. ✅ **Access and output.** Edit links, read-only viewer, OBS route.
-6. **Hardening.** R2 versions and restore, schema migrations, schema-drift CI check against
-   Blame the Pads.
+6. ✅ **Hardening.** R2 versions and restore, schema migrations, schema-drift CI check against
+   Blame the Pads. Plus card text color and status badge colors.
 
 ### Future sources
 

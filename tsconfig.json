@@ -17,5 +17,13 @@
 		"noFallthroughCasesInSwitch": true,
 		"types": ["vite/client", "./worker-configuration.d.ts"]
 	},
-	"include": ["client", "shared", "worker", "vite.config.ts", "vitest.config.ts"]
+	"include": [
+		"client",
+		"shared",
+		"worker",
+		"scripts",
+		"vite.config.ts",
+		"vitest.config.ts",
+		"vitest.drift.config.ts"
+	]
 }

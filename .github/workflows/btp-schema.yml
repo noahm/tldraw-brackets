@@ -1,0 +1,26 @@
+name: Blame the Pads schema check
+
+# Blame the Pads can change its database without telling us. This reads a few real tourneys
+# through the btp adapter every day, so a change shows up here rather than as a broken diagram.
+# Needs the BTP_SUPABASE_URL and BTP_SUPABASE_ANON_KEY repository secrets (the same values the
+# worker gets with `wrangler secret put`).
+
+on:
+  schedule:
+    - cron: '17 9 * * *'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check:btp
+        env:
+          BTP_SUPABASE_URL: ${{ secrets.BTP_SUPABASE_URL }}
+          BTP_SUPABASE_ANON_KEY: ${{ secrets.BTP_SUPABASE_ANON_KEY }}
