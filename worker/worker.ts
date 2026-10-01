@@ -16,13 +16,11 @@ const router = AutoRouter<IRequest, [env: Env, ctx: ExecutionContext]>({
 	},
 })
 	// each diagram's realtime websocket sync is handled by its own Durable Object
-	.get('/api/diagrams/:diagramId/connect', (request, env) => {
-		const { diagramId } = request.params
-		if (!DIAGRAM_ID_PATTERN.test(diagramId)) return error(400, 'Invalid diagram id')
-		const id = env.DIAGRAM_ROOM.idFromName(diagramId)
-		const room = env.DIAGRAM_ROOM.get(id)
-		return room.fetch(request.url, { headers: request.headers, body: request.body })
-	})
+	.get('/api/diagrams/:diagramId/connect', forwardToDiagramRoom)
+
+	// which tournament a diagram shows, and the live data read from it
+	.get('/api/diagrams/:diagramId/source', forwardToDiagramRoom)
+	.put('/api/diagrams/:diagramId/source', forwardToDiagramRoom)
 
 	// assets can be uploaded to the bucket under /uploads:
 	.post('/api/uploads/:uploadId', handleAssetUpload)
@@ -35,6 +33,17 @@ const router = AutoRouter<IRequest, [env: Env, ctx: ExecutionContext]>({
 	.all('*', () => {
 		return new Response('Not found', { status: 404 })
 	})
+
+function forwardToDiagramRoom(request: IRequest, env: Env) {
+	const { diagramId } = request.params
+	if (!DIAGRAM_ID_PATTERN.test(diagramId)) return error(400, 'Invalid diagram id')
+	const room = env.DIAGRAM_ROOM.get(env.DIAGRAM_ROOM.idFromName(diagramId))
+	return room.fetch(request.url, {
+		method: request.method,
+		headers: request.headers,
+		body: request.body,
+	})
+}
 
 export default {
 	fetch: router.fetch,

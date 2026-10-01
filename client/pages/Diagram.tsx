@@ -4,6 +4,9 @@ import { useParams } from 'react-router-dom'
 import { Tldraw } from 'tldraw'
 import { diagramConnectPath } from '../../shared/routes'
 import { getBookmarkPreview } from '../getBookmarkPreview'
+import { LiveDataPanel } from '../live/LiveDataPanel'
+import { LiveDataProvider, useNewLiveDataStore } from '../live/liveDataStore'
+import { SourceControls } from '../live/SourceControls'
 import { multiplayerAssetStore } from '../multiplayerAssetStore'
 
 // Unset in local dev, where tldraw needs no key. Production builds require one
@@ -12,6 +15,7 @@ const licenseKey = import.meta.env.VITE_TLDRAW_LICENSE_KEY
 
 export function Diagram() {
 	const { diagramId = '' } = useParams<{ diagramId: string }>()
+	const liveData = useNewLiveDataStore()
 
 	// Create a store connected to multiplayer.
 	const store = useSync({
@@ -19,27 +23,32 @@ export function Diagram() {
 		uri: `${window.location.origin}${diagramConnectPath(diagramId)}`,
 		// ...and how to handle static assets like images & videos
 		assets: multiplayerAssetStore,
+		// ...and where to deliver the tournament data the server pushes alongside the document.
+		onCustomMessageReceived: liveData.receive,
 	})
 
 	return (
-		<DiagramWrapper diagramId={diagramId}>
-			<Tldraw
-				licenseKey={licenseKey}
-				// we can pass the connected store into the Tldraw component which will handle
-				// loading states & enable multiplayer UX like cursors & a presence menu
-				store={store}
-				options={{ deepLinks: true }}
-				onMount={(editor) => {
-					// when the editor is ready, we need to register our bookmark unfurling service
-					editor.registerExternalAssetHandler('url', getBookmarkPreview)
-				}}
-			/>
-		</DiagramWrapper>
+		<LiveDataProvider store={liveData}>
+			<DiagramWrapper diagramId={diagramId}>
+				<Tldraw
+					licenseKey={licenseKey}
+					// we can pass the connected store into the Tldraw component which will handle
+					// loading states & enable multiplayer UX like cursors & a presence menu
+					store={store}
+					options={{ deepLinks: true }}
+					onMount={(editor) => {
+						// when the editor is ready, we need to register our bookmark unfurling service
+						editor.registerExternalAssetHandler('url', getBookmarkPreview)
+					}}
+				/>
+			</DiagramWrapper>
+		</LiveDataProvider>
 	)
 }
 
 function DiagramWrapper({ children, diagramId }: { children: ReactNode; diagramId: string }) {
 	const [didCopy, setDidCopy] = useState(false)
+	const [showLiveData, setShowLiveData] = useState(false)
 
 	useEffect(() => {
 		if (!didCopy) return
@@ -63,8 +72,19 @@ function DiagramWrapper({ children, diagramId }: { children: ReactNode; diagramI
 					Copy link
 					{didCopy && <div className="DiagramWrapper-copied">Copied!</div>}
 				</button>
+				<SourceControls diagramId={diagramId} />
+				<button
+					className="DiagramWrapper-copy"
+					aria-pressed={showLiveData}
+					onClick={() => setShowLiveData((v) => !v)}
+				>
+					{showLiveData ? 'Hide data' : 'Show data'}
+				</button>
 			</div>
-			<div className="DiagramWrapper-content">{children}</div>
+			<div className="DiagramWrapper-content">
+				{children}
+				{showLiveData && <LiveDataPanel />}
+			</div>
 		</div>
 	)
 }

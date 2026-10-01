@@ -14,9 +14,16 @@ The first (and currently only) supported backend is [Blame the Pads](https://git
 
 ## Status
 
-Phase 1 (scaffold) is done: the [tldraw multiplayer starter kit](https://tldraw.dev/starter-kits/multiplayer),
-adapted to this project's naming and structure. It's a plain multiplayer tldraw canvas with no
-tournament data yet. See [Plan](#plan) for what comes next.
+Phases 1 and 2 are done:
+
+- **Phase 1:** the [tldraw multiplayer starter kit](https://tldraw.dev/starter-kits/multiplayer),
+  adapted to this project's naming and structure.
+- **Phase 2:** each diagram can be pointed at a Blame the Pads tourney (or a bundled fixture). The
+  `DiagramRoom` polls it while anyone is connected and pushes a normalized `BracketGraph` to every
+  session. The "Show data" panel displays that graph; nothing is drawn on the canvas from it yet.
+
+The `btp` adapter has been tested against a local stand-in for Blame the Pads' Supabase, not yet
+against the real one. See [Plan](#plan) for what comes next.
 
 ## Development
 
@@ -24,6 +31,7 @@ tournament data yet. See [Plan](#plan) for what comes next.
 npm install
 npm run dev        # vite + the worker (via @cloudflare/vite-plugin) on http://localhost:5173
 npm run typecheck
+npm test           # unit tests (vitest)
 npm run build
 npm run deploy     # build + wrangler deploy (needs a Cloudflare account)
 npm run cf-typegen # regenerate worker-configuration.d.ts after editing wrangler.toml
@@ -32,6 +40,23 @@ npm run cf-typegen # regenerate worker-configuration.d.ts after editing wrangler
 Open `/` to be redirected to a diagram at `/d/<diagramId>`. Open the same URL in a second tab to
 see multiplayer sync.
 
+To give a diagram tournament data, type into the source box in its header:
+
+- a Blame the Pads tourney id or URL. This needs `BTP_SUPABASE_URL` and `BTP_SUPABASE_ANON_KEY`
+  in `.dev.vars` (copy `.dev.vars.example`). Both are the public values Blame the Pads' own
+  frontend uses.
+- `fixture:de4-midway` or `fixture:de4-late`: bundled snapshots of a 4-player double elimination
+  bracket (`worker/sources/fixtures/`), which need no network access.
+
+Then click "Show data" to see the live graph.
+
+The same thing over HTTP:
+
+```bash
+curl -X PUT localhost:5173/api/diagrams/<diagramId>/source -d '{"kind":"btp","tourneyId":123}'
+curl localhost:5173/api/diagrams/<diagramId>/source   # current source, graph and any error
+```
+
 No tldraw license key is needed on localhost. Production builds need `VITE_TLDRAW_LICENSE_KEY`
 (see `.env.example`); a free [hobby license](https://tldraw.dev/get-a-license/hobby) is fine and
 shows a "made with tldraw" watermark. Without a key, the editor stops rendering in production.
@@ -39,9 +64,12 @@ shows a "made with tldraw" watermark. Without a key, the editor stops rendering 
 ### Layout
 
 ```
-shared/   code used by both client and worker: the tldraw schema, URL helpers
-worker/   Cloudflare Worker: routing, the DiagramRoom durable object, R2 asset uploads
-client/   React + tldraw SPA, served by the same worker
+shared/          code used by both client and worker: the tldraw schema, BracketGraph,
+                 diagram sources, the live-data message, URL helpers
+worker/          Cloudflare Worker: routing, the DiagramRoom durable object, R2 asset uploads
+worker/sources/  source adapters (read-only), e.g. btp/, plus fixtures for dev and tests
+client/          React + tldraw SPA, served by the same worker
+client/live/     live-data store, source picker and debug panel
 ```
 
 Client and worker are always deployed together as one Worker, so their tldraw versions always
@@ -99,11 +127,16 @@ interface BracketGraph {
   and stops when the last one leaves. start.gg can only be polled anyway, so this keeps one model
   for every source. Supabase Realtime is a later latency optimization; all the needed tables are
   already in its publication.
-- **Keys:** `btp:round:<id>`, `btp:adv:<id>`, `btp:pool:<id>`.
+- **Keys:** `btp:round:<id>`, `btp:adv:<id>`, `btp:pool:<id>`, `btp:player:<player_tourney_id>`.
   - Card titles come from the round name prefix that Blame the Pads preserves
     (`"WR1:M1: Alice vs. Bob"` → `WR1:M1`).
   - Entrants come from `player_rounds`.
   - Empty slots are labelled from incoming edges (e.g. "Loser of WF").
+- **Placements:** Blame the Pads doesn't store a round's results; it computes them from scores.
+  But when a player advances, their new `player_rounds.sort_order` is the rank they finished with
+  in the round they came from. So a completed round's placements are recovered from where its
+  players went next. Players who were eliminated (and the final round's players) have no
+  recoverable placement; computing those from scores is future work.
 - **No agreed schema contract.** Validate rows with zod, keep the one select string in a single
   file, and run a scheduled CI check against a known tourney so drift is caught quickly.
   Optionally, ask Blame the Pads for a stable view or RPC.
@@ -144,10 +177,10 @@ interface BracketGraph {
 
 1. ✅ **Scaffold.** Starter kit, `DiagramRoom` durable object, shared schema module, license key
    wiring, `/d/:diagramId` routes.
-2. **Read path.** `btp` adapter, `BracketGraph`, alarm polling, custom-message delivery, and a
-   debug view of the raw graph. Check this first: whether a custom message sent right after
-   `handleSocketConnect` arrives before the sync handshake completes. If not, new clients fetch
-   the initial graph over HTTP and receive only updates by message.
+2. ✅ **Read path.** `btp` adapter, `BracketGraph`, alarm polling, custom-message delivery, and a
+   debug view of the raw graph. A new session is sent live data once the room has processed its
+   sync `connect` message (via `onAfterReceiveMessage`), so no separate HTTP fetch is needed.
+   Still to do: confirm against Blame the Pads' real Supabase.
 3. **Card shape and Generate layout.** Custom card shape in the shared schema, placeholders,
    template presets, "unplaced rounds" banner.
 4. **Editing polish.** Theme and hex colors, edge styles.

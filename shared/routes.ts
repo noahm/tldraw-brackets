@@ -6,3 +6,8 @@ export const DIAGRAM_ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/
 export function diagramConnectPath(diagramId: string) {
 	return `/api/diagrams/${diagramId}/connect`
 }
+
+/** GET the current LiveDataState; PUT a DiagramSource to change where data comes from */
+export function diagramSourcePath(diagramId: string) {
+	return `/api/diagrams/${diagramId}/source`
+}

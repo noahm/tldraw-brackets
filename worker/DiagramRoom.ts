@@ -7,7 +7,14 @@ import {
 import type { TLRecord } from '@tldraw/tlschema'
 import { DurableObject } from 'cloudflare:workers'
 import { AutoRouter, error, IRequest } from 'itty-router'
+import type { LiveDataMessage, LiveDataState } from '../shared/liveData'
 import { diagramSchema } from '../shared/schema'
+import { type DiagramSource, parseDiagramSource } from '../shared/source'
+import { fetchGraph } from './sources'
+
+/** How often to re-read the source while anyone has the diagram open. */
+const POLL_INTERVAL_MS = 5_000
+const SOURCE_STORAGE_KEY = 'source'
 
 interface SocketAttachment {
 	sessionId: string
@@ -26,10 +33,17 @@ function getAttachment(ws: WebSocket): SocketAttachment | null {
 // persisted automatically to SQLite via ctx.storage. When all clients are
 // idle, the DO hibernates (freeing memory) while WebSocket connections
 // stay alive at the Cloudflare layer.
-export class DiagramRoom extends DurableObject {
+//
+// The DO is also the only thing that reads the diagram's tournament source. It polls the
+// source on an alarm while anyone is connected, and pushes changes to every session as a
+// custom message. Live data never enters the tldraw document.
+export class DiagramRoom extends DurableObject<Env> {
 	private room: TLSocketRoom<TLRecord, void> | null = null
 	/** Map sessionId → ws so onSessionSnapshot can serialize to the right socket. */
 	private readonly sessionIdToWs = new Map<string, WebSocket>()
+	/** In memory only; rebuilt from the source after the DO wakes from hibernation. */
+	private liveData: LiveDataState | null = null
+	private refreshing: Promise<LiveDataState> | null = null
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env)
@@ -57,6 +71,11 @@ export class DiagramRoom extends DurableObject {
 					const ws = this.sessionIdToWs.get(sessionId)
 					if (ws) ws.serializeAttachment({ sessionId, snapshot })
 				},
+				onAfterReceiveMessage: ({ sessionId, stringified }) => {
+					// Custom messages only reach a session once its sync handshake is done, so
+					// wait for the client's connect message before sending it live data.
+					if (isConnectMessage(stringified)) this.onSessionConnected(sessionId)
+				},
 			})
 
 			// Resume any sessions that survived hibernation
@@ -73,10 +92,10 @@ export class DiagramRoom extends DurableObject {
 		return this.room
 	}
 
-	private readonly router = AutoRouter({ catch: (e) => error(e) }).get(
-		'/api/diagrams/:diagramId/connect',
-		(request) => this.handleConnect(request)
-	)
+	private readonly router = AutoRouter({ catch: (e) => error(e) })
+		.get('/api/diagrams/:diagramId/connect', (request) => this.handleConnect(request))
+		.get('/api/diagrams/:diagramId/source', () => this.getLiveData())
+		.put('/api/diagrams/:diagramId/source', (request) => this.handleSetSource(request))
 
 	// Entry point for all requests to the Durable Object
 	fetch(request: Request): Response | Promise<Response> {
@@ -103,6 +122,110 @@ export class DiagramRoom extends DurableObject {
 		this.getOrCreateRoom().handleSocketConnect({ sessionId, socket: serverWebSocket })
 
 		return new Response(null, { status: 101, webSocket: clientWebSocket })
+	}
+
+	// --- Live tournament data ---
+
+	private async handleSetSource(request: IRequest) {
+		const body = await request.json().catch(() => undefined)
+		const source = parseDiagramSource(body)
+		if (body !== null && !source) return error(400, 'Invalid source')
+
+		// Let any fetch of the old source finish first, so refresh() below can't hand back its result.
+		await this.refreshing?.catch(() => {})
+
+		if (source) await this.ctx.storage.put(SOURCE_STORAGE_KEY, source)
+		else await this.ctx.storage.delete(SOURCE_STORAGE_KEY)
+
+		// Start over: the old graph belongs to the old source.
+		this.liveData = null
+		const state = await this.refresh()
+		await this.ensurePolling()
+		return state
+	}
+
+	private onSessionConnected(sessionId: string) {
+		this.ctx.waitUntil(
+			(async () => {
+				const state = await this.getLiveData()
+				this.room?.sendCustomMessage(sessionId, liveDataMessage(state))
+				await this.ensurePolling()
+			})()
+		)
+	}
+
+	private async getLiveData(): Promise<LiveDataState> {
+		return this.liveData ?? (await this.refresh())
+	}
+
+	/** Re-reads the source, and tells every session if anything changed. */
+	private refresh(): Promise<LiveDataState> {
+		// Overlapping callers (a poll and a new session, say) share one fetch.
+		this.refreshing ??= this.fetchLiveData()
+			.then((next) => {
+				const changed = !this.liveData || !sameLiveData(this.liveData, next)
+				if (changed) {
+					this.liveData = next
+					this.broadcast(liveDataMessage(next))
+				}
+				return this.liveData!
+			})
+			.finally(() => {
+				this.refreshing = null
+			})
+		return this.refreshing
+	}
+
+	private async fetchLiveData(): Promise<LiveDataState> {
+		const source = parseDiagramSource(await this.ctx.storage.get<DiagramSource>(SOURCE_STORAGE_KEY))
+		const previous = this.liveData
+		if (!source) return { source: null, graph: null, updatedAt: null, error: null }
+
+		try {
+			const graph = await fetchGraph(source, this.env)
+			const graphChanged = JSON.stringify(graph) !== JSON.stringify(previous?.graph)
+			return {
+				source,
+				graph,
+				updatedAt: graphChanged ? new Date().toISOString() : previous!.updatedAt,
+				error: null,
+			}
+		} catch (e) {
+			const message = e instanceof Error ? e.message : String(e)
+			console.error(`Failed to read ${source.kind} source:`, message)
+			// Keep showing the last good graph while the source is failing.
+			const keepError = previous?.error?.message === message
+			return {
+				source,
+				graph: previous?.graph ?? null,
+				updatedAt: previous?.updatedAt ?? null,
+				error: keepError ? previous!.error : { message, at: new Date().toISOString() },
+			}
+		}
+	}
+
+	private broadcast(message: LiveDataMessage) {
+		if (!this.room) return
+		for (const session of this.room.getSessions()) {
+			if (session.isConnected) this.room.sendCustomMessage(session.sessionId, message)
+		}
+	}
+
+	private async ensurePolling() {
+		if ((await this.ctx.storage.getAlarm()) == null) {
+			await this.ctx.storage.setAlarm(Date.now() + POLL_INTERVAL_MS)
+		}
+	}
+
+	override async alarm() {
+		// Stop polling once nobody is watching; the next connection starts it again.
+		if (this.ctx.getWebSockets().length === 0) return
+		if (!(await this.ctx.storage.get(SOURCE_STORAGE_KEY))) return
+
+		// Make sure sessions that survived hibernation are back in the room to receive updates.
+		this.getOrCreateRoom()
+		await this.refresh()
+		await this.ctx.storage.setAlarm(Date.now() + POLL_INTERVAL_MS)
 	}
 
 	// --- WebSocket Hibernation API handlers ---
@@ -143,5 +266,24 @@ export class DiagramRoom extends DurableObject {
 		}
 
 		room[method](attachment.sessionId)
+	}
+}
+
+function liveDataMessage(state: LiveDataState): LiveDataMessage {
+	return { type: 'live-data', state }
+}
+
+/** True if the two states would look the same to a client. */
+function sameLiveData(a: LiveDataState, b: LiveDataState) {
+	return JSON.stringify(a) === JSON.stringify(b)
+}
+
+function isConnectMessage(stringified: string) {
+	// Cheap pre-check so ordinary document pushes aren't parsed twice.
+	if (!stringified.includes('"connect"')) return false
+	try {
+		return JSON.parse(stringified)?.type === 'connect'
+	} catch {
+		return false
 	}
 }

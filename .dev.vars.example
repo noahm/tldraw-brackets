@@ -1,0 +1,7 @@
+# Copy to .dev.vars for local development. In production, set these with `wrangler secret put`.
+
+# Blame the Pads' Supabase project. Both values are public: they're the same ones its own
+# frontend ships with. Only needed for diagrams whose source is a Blame the Pads tourney;
+# fixture sources work without them.
+BTP_SUPABASE_URL=https://<project>.supabase.co
+BTP_SUPABASE_ANON_KEY=
