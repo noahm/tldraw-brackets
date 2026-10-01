@@ -2,7 +2,7 @@ import { getAssetUrlsByImport } from '@tldraw/assets/imports.vite'
 import { useSync } from '@tldraw/sync'
 import { ReactNode, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Tldraw, type TLComponents } from 'tldraw'
+import { Tldraw, type Editor, type TLComponents } from 'tldraw'
 import { diagramConnectPath } from '../../shared/routes'
 import { diagramSchema } from '../../shared/schema'
 import { BracketPanel } from '../bracket/BracketPanel'
@@ -12,6 +12,9 @@ import { LiveDataPanel } from '../live/LiveDataPanel'
 import { LiveDataProvider, useNewLiveDataStore } from '../live/liveDataStore'
 import { SourceControls } from '../live/SourceControls'
 import { multiplayerAssetStore } from '../multiplayerAssetStore'
+import { PaletteEditor } from '../palette/PaletteEditor'
+import { initialThemes } from '../palette/paletteTheme'
+import { usePalette } from '../palette/usePalette'
 
 // Unset in local dev, where tldraw needs no key. Production builds require one
 // (a free hobby key is fine) or the editor stops rendering after a few seconds.
@@ -27,6 +30,8 @@ const components: TLComponents = { TopPanel: BracketPanel }
 export function Diagram() {
 	const { diagramId = '' } = useParams<{ diagramId: string }>()
 	const liveData = useNewLiveDataStore()
+	const [editor, setEditor] = useState<Editor | null>(null)
+	const { palette, overrides } = usePalette(editor)
 
 	// Create a store connected to multiplayer.
 	const store = useSync({
@@ -38,11 +43,16 @@ export function Diagram() {
 		onCustomMessageReceived: liveData.receive,
 		// The exact schema the server validates against, custom shapes included.
 		schema: diagramSchema,
+		// Registers the palette's color names before the document (and shapes using them) loads.
+		themes: initialThemes,
 	})
 
 	return (
 		<LiveDataProvider store={liveData}>
-			<DiagramWrapper diagramId={diagramId}>
+			<DiagramWrapper
+				diagramId={diagramId}
+				toolbar={editor && <PaletteEditor editor={editor} palette={palette} />}
+			>
 				<Tldraw
 					licenseKey={licenseKey}
 					assetUrls={assetUrls}
@@ -51,12 +61,16 @@ export function Diagram() {
 					store={store}
 					shapeUtils={shapeUtils}
 					components={components}
+					themes={initialThemes}
+					overrides={overrides}
 					options={{ deepLinks: true }}
 					onMount={(editor) => {
 						// when the editor is ready, we need to register our bookmark unfurling service
 						editor.registerExternalAssetHandler('url', getBookmarkPreview)
 						// handy for poking at the editor from devtools (and browser tests)
 						if (import.meta.env.DEV) Object.assign(window, { editor })
+						setEditor(editor)
+						return () => setEditor(null)
 					}}
 				/>
 			</DiagramWrapper>
@@ -64,7 +78,15 @@ export function Diagram() {
 	)
 }
 
-function DiagramWrapper({ children, diagramId }: { children: ReactNode; diagramId: string }) {
+function DiagramWrapper({
+	children,
+	diagramId,
+	toolbar,
+}: {
+	children: ReactNode
+	diagramId: string
+	toolbar?: ReactNode
+}) {
 	const [didCopy, setDidCopy] = useState(false)
 	const [showLiveData, setShowLiveData] = useState(false)
 
@@ -91,6 +113,7 @@ function DiagramWrapper({ children, diagramId }: { children: ReactNode; diagramI
 					{didCopy && <div className="DiagramWrapper-copied">Copied!</div>}
 				</button>
 				<SourceControls diagramId={diagramId} />
+				{toolbar}
 				<button
 					className="DiagramWrapper-copy"
 					aria-pressed={showLiveData}

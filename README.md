@@ -14,7 +14,7 @@ The first (and currently only) supported backend is [Blame the Pads](https://git
 
 ## Status
 
-Phases 1–3 are done:
+Phases 1–4 are done:
 
 - **Phase 1:** the [tldraw multiplayer starter kit](https://tldraw.dev/starter-kits/multiplayer),
   adapted to this project's naming and structure.
@@ -24,6 +24,9 @@ Phases 1–3 are done:
 - **Phase 3:** "Generate layout" draws the bracket as hand-drawn match cards joined by elbow
   arrows. Cards show live entrants, results and "Winner of …" placeholders, and keep whatever
   position and styling admins give them as the tournament progresses.
+- **Phase 4:** each diagram has its own palette of eight extra named colors, edited from the
+  header's "Palette" button. They appear in tldraw's style panel for every shape, sync to all
+  editors, and undo like any other edit.
 
 The `btp` adapter has been checked against every started tourney in Blame the Pads' real database
 (36 at the time). See [Plan](#plan) for what comes next.
@@ -180,9 +183,16 @@ interface BracketGraph {
     usual shape.
   - Checked against real double elimination, single elimination and waterfall tourneys. Copying
     Blame the Pads' template coordinates as presets turned out to be unnecessary.
-- **Styling:** tldraw's hand-drawn look by default. A diagram-level theme record supplies default
-  and per-status colors. Cards store only admin overrides (hex colors), set through a style panel
-  extension with a color picker.
+- **Styling:** tldraw's hand-drawn look by default, with tldraw's normal style panel for cards,
+  arrows and everything else.
+- **Diagram palette** (`shared/palette.ts`, `client/palette/`): eight extra colors per diagram.
+  - The slot names (`palette-1` … `palette-8`) are fixed, because tldraw validates shape colors
+    against a list of names on both the client and the worker.
+  - What each slot is called and looks like lives in the document record's meta, so it syncs,
+    persists and undoes with the diagram.
+  - Each client turns the palette into tldraw theme colors (fills, frames, notes and highlights
+    for light and dark mode, mixed from the one chosen color) with `editor.updateTheme`, and gives
+    the style panel the slots' names through translation overrides.
 - **Images:** uploads go to R2 via `TLAssetStore` (already wired up from the starter kit).
 
 ### Access (v1: no accounts)
@@ -210,7 +220,8 @@ interface BracketGraph {
    Checked against Blame the Pads' real Supabase.
 3. ✅ **Card shape and Generate layout.** Custom card shape in the shared schema, placeholders,
    "unplaced matches" banner.
-4. **Editing polish.** Theme and hex colors, edge styles.
+4. ✅ **Diagram palette.** Named custom colors per diagram, usable by every shape. Arrows already
+   take tldraw's own styles, so edges needed nothing extra.
 5. **Access and output.** D1 registry, edit links, read-only viewer, OBS route.
 6. **Hardening.** R2 versions and restore, schema migrations, schema-drift CI check against
    Blame the Pads.
