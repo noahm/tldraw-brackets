@@ -127,13 +127,13 @@ export function Home() {
 		<div className="Home">
 			<h1>DDR Tools Brackets</h1>
 			<p className="Home-lead">
-				Turn your tournament's bracket into <a href="https://www.tldraw.com/">tldraw</a> diagram you
-				can lay out and style however you like, effortlessly show them off on stream, and have them
-				stay updated live as matches are played.
+				Turn your tournament's bracket into a <a href="https://www.tldraw.com/">tldraw</a> diagram
+				you can lay out and style however you like, effortlessly show them off on stream, and have
+				them stay updated live as matches are played.
 			</p>
 			<p>
 				This tool currently only visualizes tournaments on{' '}
-				<a href="https://www.blamethepads.com/">Blame the Pads</a>, but with plan to support
+				<a href="https://www.blamethepads.com/">Blame the Pads</a>, but with plans to support
 				start.gg soon. Provide a link to a BTP tournament and its matches, players, scores and
 				statuses stay up to date even as you manually adjust layout and styles.
 			</p>
