@@ -1,3 +1,4 @@
+import { getAssetUrlsByImport } from '@tldraw/assets/imports.vite'
 import { useSync } from '@tldraw/sync'
 import { ReactNode, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
@@ -12,6 +13,10 @@ import { multiplayerAssetStore } from '../multiplayerAssetStore'
 // Unset in local dev, where tldraw needs no key. Production builds require one
 // (a free hobby key is fine) or the editor stops rendering after a few seconds.
 const licenseKey = import.meta.env.VITE_TLDRAW_LICENSE_KEY
+
+// tldraw's fonts, icons and translations, bundled by Vite and served from our own worker rather
+// than cdn.tldraw.com. Keeps them in lockstep with the SDK version and works without the CDN.
+const assetUrls = getAssetUrlsByImport()
 
 export function Diagram() {
 	const { diagramId = '' } = useParams<{ diagramId: string }>()
@@ -32,6 +37,7 @@ export function Diagram() {
 			<DiagramWrapper diagramId={diagramId}>
 				<Tldraw
 					licenseKey={licenseKey}
+					assetUrls={assetUrls}
 					// we can pass the connected store into the Tldraw component which will handle
 					// loading states & enable multiplayer UX like cursors & a presence menu
 					store={store}

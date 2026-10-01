@@ -6,5 +6,10 @@ import { defineConfig } from 'vite'
 export default defineConfig(() => {
 	return {
 		plugins: [cloudflare(), react()],
+		optimizeDeps: {
+			// @tldraw/assets is a list of `?url` imports of its font/icon/translation files. The dev
+			// dependency pre-bundler can't resolve those, so let Vite serve the package as-is.
+			exclude: ['@tldraw/assets'],
+		},
 	}
 })
