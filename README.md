@@ -160,7 +160,8 @@ interface BracketGraph {
     hand and there's no result.
   - `placement` is set only when that advancement pins down the rank (e.g. "Winner 1–1", or
     "Loser 2+" in a 1v1). Data that contradicts itself, such as both Grand Finals players going
-    to a bracket reset, gets no placement.
+    to a bracket reset, gets no placement. Cards then show the advancement's rank range
+    instead (e.g. "3rd–6th").
   - `sort_order` is not trusted on its own. Before Blame the Pads' 2026-09-15 advancement rework
     it was the position within the advancing or non-advancing group, since then it's the absolute
     rank, and hand-placed players have none.
@@ -187,15 +188,23 @@ interface BracketGraph {
   - Card and arrow ids derive from graph keys (`createShapeId('btp:round:123')`), so concurrent
     clicks by two editors can't duplicate anything, and the server never builds tldraw records.
   - Arrows are only added alongside new cards, so ones an admin deleted stay deleted.
-  - Drops from the main bracket into the losers bracket get no arrow by default; the losers
-    card's placeholder already says where its players come from.
+  - Moves between the main and losers/redemption lanes are dashed, with arrowheads. In double
+    elimination, drops into the losers bracket get no arrow at all (the losers card's
+    placeholder already says where its players come from); in waterfalls and gauntlets, where
+    moving between lanes is the point, they're drawn.
+  - Each phase (Blame the Pads pool, e.g. a waterfall division) gets a text label above its
+    cards, unless it's a single match with the same name.
 - **Layout** (`client/bracket/layout.ts`), which only needs to be a decent first draft:
-  - Column = longest path from the bracket's first matches (phase order if there are no
-    advancements).
+  - When every match has a phase, phases are laid out in the order of the advancements between
+    them, each getting as many columns as its longest same-lane chain. A waterfall division's
+    winners and redemption groups therefore share a column, joined by a short vertical drop.
+  - Otherwise (older tourneys have no pools), column = longest path from the bracket's first
+    matches, or phase order if there are no advancements.
   - Lanes by name: losers (`LR…`, "Loser", "Redemption") below the main bracket; grand finals
     and reset to the right of both.
   - Within a lane, each match is centered on its feeders, giving elimination brackets their
     usual shape.
+  - Cards for groups of more than two are wider, and each column is as wide as its widest card.
   - Checked against real double elimination, single elimination and waterfall tourneys. Copying
     Blame the Pads' template coordinates as presets turned out to be unnecessary.
 - **Styling:** tldraw's hand-drawn look by default, with tldraw's normal style panel for cards,

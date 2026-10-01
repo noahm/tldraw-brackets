@@ -1,5 +1,6 @@
 import {
 	edgeSlots,
+	type BracketFormat,
 	type BracketGraph,
 	type GraphEdge,
 	type GraphMatch,
@@ -12,6 +13,13 @@ export const btpKeys = {
 	round: (id: number) => `btp:round:${id}`,
 	advancement: (id: number) => `btp:adv:${id}`,
 	player: (playerTourneyId: number) => `btp:player:${playerTourneyId}`,
+}
+
+const formatMap: Record<string, BracketFormat> = {
+	'Double Elimination': 'double-elimination',
+	'Single Elimination': 'single-elimination',
+	'Waterfall (Redemption)': 'waterfall',
+	Gauntlet: 'gauntlet',
 }
 
 const statusMap: Record<string, MatchStatus> = {
@@ -115,6 +123,7 @@ export function btpRowsToGraph(rows: BtpTourneyRows): BracketGraph {
 
 	return {
 		title: rows.tourney.name,
+		format: (rows.tourney.type && formatMap[rows.tourney.type]) || 'other',
 		phases: pools.map((p, i) => ({ key: btpKeys.pool(p.id), name: p.name, order: i })),
 		matches,
 		edges,

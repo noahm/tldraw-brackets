@@ -66,6 +66,12 @@ export const MATCH_CARD_FONT_SCALE: Record<TLDefaultSizeStyle, number> = {
 
 const BASE_FONT_SIZE = 16 // tldraw's default theme fontSize
 export const MATCH_CARD_WIDTH = 220
+const WIDE_MATCH_CARD_WIDTH = 260
+
+/** Groups bigger than a head-to-head get room for longer names next to their results. */
+export function matchCardWidth(capacity: number) {
+	return capacity > 2 ? WIDE_MATCH_CARD_WIDTH : MATCH_CARD_WIDTH
+}
 
 /** Card measurements for a size style, so layout and rendering agree. */
 export function matchCardMetrics(size: TLDefaultSizeStyle, baseFontSize = BASE_FONT_SIZE) {

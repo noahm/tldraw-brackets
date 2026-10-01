@@ -40,8 +40,17 @@ export interface GraphEdge {
 	label?: string
 }
 
+/** How the source describes the tournament; some layout choices depend on it. */
+export type BracketFormat =
+	| 'double-elimination'
+	| 'single-elimination'
+	| 'waterfall'
+	| 'gauntlet'
+	| 'other'
+
 export interface BracketGraph {
 	title: string
+	format: BracketFormat
 	phases: GraphPhase[]
 	matches: GraphMatch[]
 	edges: GraphEdge[]

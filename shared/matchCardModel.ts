@@ -27,7 +27,7 @@ export function matchCardModel(graph: BracketGraph, matchKey: string): MatchCard
 	const rows: MatchCardRow[] = match.entrants.map((entrant) => ({
 		kind: 'entrant',
 		entrant,
-		result: entrantResult(graph, entrant),
+		result: entrantResult(graph, match, entrant),
 	}))
 
 	for (const label of pendingArrivals(graph, match)) {
@@ -39,10 +39,19 @@ export function matchCardModel(graph: BracketGraph, matchKey: string): MatchCard
 	return { match, rows }
 }
 
-function entrantResult(graph: BracketGraph, entrant: GraphEntrant): string | undefined {
+/**
+ * The player's exact place when known; otherwise the range of places the advancement they took
+ * covers (e.g. "3rd–6th"), which says more in less space than its label.
+ */
+function entrantResult(
+	graph: BracketGraph,
+	match: GraphMatch,
+	entrant: GraphEntrant
+): string | undefined {
 	if (entrant.placement != null) return ordinal(entrant.placement)
-	if (!entrant.advancedVia) return undefined
-	return graph.edges.find((e) => e.key === entrant.advancedVia)?.label ?? 'Advanced'
+	const edge = entrant.advancedVia && graph.edges.find((e) => e.key === entrant.advancedVia)
+	if (!edge) return undefined
+	return edgeDescription(edge, edgeSlots(edge, match.capacity))
 }
 
 /**

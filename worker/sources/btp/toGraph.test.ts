@@ -22,6 +22,7 @@ describe('btpRowsToGraph', () => {
 		const graph = btpRowsToGraph(de4Midway)
 
 		expect(graph.title).toBe('Fixture: 4-player double elim')
+		expect(graph.format).toBe('double-elimination')
 		expect(graph.phases.map((p) => p.name)).toEqual([
 			'Winners Semi-Finals',
 			'Winners Finals',
