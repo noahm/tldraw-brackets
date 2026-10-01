@@ -124,6 +124,7 @@ function DiagramEditor({
 					shapeUtils={shapeUtils}
 					components={components}
 					themes={initialThemes}
+					colorScheme="system"
 					overrides={overrides}
 					options={{ deepLinks: true }}
 					onMount={(editor) => {

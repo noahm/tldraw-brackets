@@ -21,7 +21,7 @@ All six phases are done:
 - **Phase 2:** each diagram can be pointed at a Blame the Pads tourney (or a bundled fixture). The
   `DiagramRoom` polls it while anyone is connected and pushes a normalized `BracketGraph` to every
   session. The "Show data" panel displays that graph for debugging.
-- **Phase 3:** "Generate layout" draws the bracket as hand-drawn match cards joined by elbow
+- **Phase 3:** "Generate layout" draws the bracket as hand-drawn match cards joined by arc
   arrows. Cards show live entrants, results and "Winner of …" placeholders, and keep whatever
   position and styling admins give them as the tournament progresses.
 - **Phase 4:** each diagram has its own palette of eight extra named colors, edited from the
@@ -199,7 +199,7 @@ interface BracketGraph {
   - Changing a card's size style scales the card with its text.
   - A card whose match disappears from the source is dimmed and marked "Not in source".
 - **Starting layouts are an explicit admin action, never automatic.**
-  - "Generate layout" builds cards and elbow arrows bound to them, as one undoable step.
+  - "Generate layout" builds cards and arc arrows bound to them, as one undoable step.
   - Matches that appear in the source later show a "N matches aren't on the diagram yet" banner.
     "Place them" adds just those, lined up with wherever admins have moved the rest.
   - Card and arrow ids derive from graph keys (`createShapeId('btp:round:123')`), so concurrent

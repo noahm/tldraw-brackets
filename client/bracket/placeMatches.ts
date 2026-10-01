@@ -127,6 +127,9 @@ function layoutOffset(editor: Editor, graph: BracketGraph, layout: Map<string, M
 	return { x: viewport.x + 64, y: viewport.y + 64 }
 }
 
+// How far an arc bows out to the right to get around cards stacked between its ends.
+const BLOCKED_BEND = 60
+
 interface EdgeStyle {
 	dash: TLDefaultDashStyle
 	arrowheadEnd: TLArrowShapeArrowheadStyle
@@ -135,9 +138,8 @@ interface EdgeStyle {
 /**
  * How an advancement is drawn, or null for not at all.
  *
- * The bracket's main flow (left to right within a lane) is a plain hand-drawn line. Moves
- * between the main and losers/redemption lanes are dashed, with an arrowhead since their
- * direction isn't implied by the layout. In double elimination, drops into the losers bracket
+ * The bracket's main flow (left to right within a lane) is a plain hand-drawn arrow. Moves
+ * between the main and losers/redemption lanes are dashed. In double elimination, drops into the losers bracket
  * aren't drawn: they would cross the whole diagram, and the losers card's "Loser of …" slot
  * already says where its players come from. In waterfalls and gauntlets, where moving between
  * lanes is the whole point, they are.
@@ -145,13 +147,13 @@ interface EdgeStyle {
 function edgeStyle(graph: BracketGraph, fromLane: Lane, toLane: Lane): EdgeStyle | null {
 	const crossesLanes =
 		(fromLane === 'main' && toLane === 'losers') || (fromLane === 'losers' && toLane === 'main')
-	if (!crossesLanes) return { dash: 'draw', arrowheadEnd: 'none' }
+	if (!crossesLanes) return { dash: 'draw', arrowheadEnd: 'arrow' }
 	if (graph.format === 'double-elimination' && fromLane === 'main') return null
 	return { dash: 'dashed', arrowheadEnd: 'arrow' }
 }
 
 /**
- * An elbow arrow bound to both cards: from the right edge of one to the left edge of the next.
+ * An arc arrow bound to both cards: from the right edge of one to the left edge of the next.
  * When one card sits above the other (a drop within a waterfall division), straight down from
  * bottom to top, or around the right-hand side if other cards are in the way.
  */
@@ -177,8 +179,10 @@ function connect(
 		)
 	let startAnchor = { x: 1, y: 0.5 }
 	let endAnchor = { x: 0, y: 0.5 }
+	let bend = 0
 	if (stacked && blocked) {
 		endAnchor = { x: 1, y: 0.5 } // out and back in on the right
+		bend = downward ? -BLOCKED_BEND : BLOCKED_BEND // bulging right
 	} else if (stacked) {
 		startAnchor = { x: 0.5, y: downward ? 1 : 0 }
 		endAnchor = { x: 0.5, y: downward ? 0 : 1 }
@@ -195,7 +199,8 @@ function connect(
 		x: startPoint.x,
 		y: startPoint.y,
 		props: {
-			kind: 'elbow',
+			kind: 'arc',
+			bend,
 			start: { x: 0, y: 0 },
 			end: { x: endPoint.x - startPoint.x, y: endPoint.y - startPoint.y },
 			arrowheadStart: 'none',
