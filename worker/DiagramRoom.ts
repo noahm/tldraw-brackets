@@ -10,14 +10,24 @@ import { AutoRouter, error, IRequest } from 'itty-router'
 import type { LiveDataMessage, LiveDataState } from '../shared/liveData'
 import { diagramSchema } from '../shared/schema'
 import { type DiagramSource, parseDiagramSource } from '../shared/source'
+import {
+	type DiagramVersion,
+	VERSION_ID_PATTERN,
+	VERSION_LABEL_MAX_LENGTH,
+} from '../shared/versions'
 import { bearerToken, hashToken, sameHash, TICKET_TTL_MS } from './access'
 import { fetchGraph } from './sources'
+import { VersionStore } from './versions'
 
 /** How often to re-read the source while anyone has the diagram open. */
 const POLL_INTERVAL_MS = 5_000
 const SOURCE_STORAGE_KEY = 'source'
 const EDIT_TOKEN_HASH_KEY = 'editTokenHash'
 const TICKET_KEY_PREFIX = 'ticket:'
+/** How often an automatic version is saved while the diagram keeps changing. */
+const AUTO_VERSION_INTERVAL_MS = 10 * 60_000
+const VERSIONED_CLOCK_KEY = 'versionedDocumentClock'
+const LAST_AUTO_VERSION_AT_KEY = 'lastAutoVersionAt'
 
 interface SocketAttachment {
 	sessionId: string
@@ -50,9 +60,11 @@ export class DiagramRoom extends DurableObject<Env> {
 	/** In memory only; rebuilt from the source after the DO wakes from hibernation. */
 	private liveData: LiveDataState | null = null
 	private refreshing: Promise<LiveDataState> | null = null
+	private readonly versions: VersionStore
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env)
+		this.versions = new VersionStore(env.ASSETS_BUCKET, ctx.id.toString())
 		// Respond to ping messages at the platform level without waking the DO.
 		// The TLSyncClient sends {"type":"ping"} every 5s; without this, each
 		// ping would wake the DO from hibernation.
@@ -270,14 +282,66 @@ export class DiagramRoom extends DurableObject<Env> {
 	}
 
 	override async alarm() {
-		// Stop polling once nobody is watching; the next connection starts it again.
+		// Stop once nobody is watching; the next connection starts the alarm again.
 		if (this.ctx.getWebSockets().length === 0) return
-		if (!(await this.ctx.storage.get(SOURCE_STORAGE_KEY))) return
 
 		// Make sure sessions that survived hibernation are back in the room to receive updates.
 		this.getOrCreateRoom()
-		await this.refresh()
+		if (await this.ctx.storage.get(SOURCE_STORAGE_KEY)) await this.refresh()
+		await this.autoSaveVersion()
 		await this.ctx.storage.setAlarm(Date.now() + POLL_INTERVAL_MS)
+	}
+
+	// --- Versions (called over RPC from the worker, which checks the edit token) ---
+
+	listVersions(): Promise<DiagramVersion[]> {
+		return this.versions.list()
+	}
+
+	async saveVersion(label?: string): Promise<DiagramVersion> {
+		const trimmed = label?.trim().slice(0, VERSION_LABEL_MAX_LENGTH) || undefined
+		return this.saveCurrent('manual', trimmed)
+	}
+
+	getVersion(versionId: string): Promise<string | null> {
+		return VERSION_ID_PATTERN.test(versionId) ? this.versions.get(versionId) : Promise.resolve(null)
+	}
+
+	exportCurrent(): string {
+		return JSON.stringify(this.getOrCreateRoom().getCurrentSnapshot())
+	}
+
+	/**
+	 * Replaces the diagram with a saved version, keeping a copy of what it replaces. Everyone is
+	 * disconnected and reconnects to the restored document.
+	 */
+	async restoreVersion(versionId: string): Promise<boolean> {
+		const json = await this.getVersion(versionId)
+		if (!json) return false
+		await this.saveCurrent('before-restore')
+		const room = this.getOrCreateRoom()
+		room.loadSnapshot(JSON.parse(json))
+		await this.ctx.storage.put(VERSIONED_CLOCK_KEY, room.getCurrentDocumentClock())
+		return true
+	}
+
+	private async saveCurrent(kind: DiagramVersion['kind'], label?: string) {
+		const room = this.getOrCreateRoom()
+		const version = await this.versions.save(JSON.stringify(room.getCurrentSnapshot()), kind, label)
+		await this.ctx.storage.put(VERSIONED_CLOCK_KEY, room.getCurrentDocumentClock())
+		return version
+	}
+
+	/** Saves an automatic version if the diagram changed since the last one, at most every 10 min. */
+	private async autoSaveVersion({ force = false } = {}) {
+		if (!(await this.exists())) return
+		const room = this.getOrCreateRoom()
+		const lastClock = (await this.ctx.storage.get<number>(VERSIONED_CLOCK_KEY)) ?? 0
+		if (room.getCurrentDocumentClock() <= lastClock) return
+		const lastAt = (await this.ctx.storage.get<number>(LAST_AUTO_VERSION_AT_KEY)) ?? 0
+		if (!force && Date.now() - lastAt < AUTO_VERSION_INTERVAL_MS) return
+		await this.saveCurrent('auto')
+		await this.ctx.storage.put(LAST_AUTO_VERSION_AT_KEY, Date.now())
 	}
 
 	// --- WebSocket Hibernation API handlers ---
@@ -318,6 +382,10 @@ export class DiagramRoom extends DurableObject<Env> {
 		}
 
 		room[method](attachment.sessionId)
+
+		// The last person left: keep whatever they changed since the last version.
+		const remaining = this.ctx.getWebSockets().filter((socket) => socket !== ws)
+		if (remaining.length === 0) this.ctx.waitUntil(this.autoSaveVersion({ force: true }))
 	}
 }
 

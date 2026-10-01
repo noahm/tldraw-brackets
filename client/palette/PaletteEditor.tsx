@@ -17,7 +17,7 @@ export function PaletteEditor({ editor, palette }: { editor: Editor; palette: Di
 	const markUndoStep = () => editor.markHistoryStoppingPoint('edit palette')
 
 	return (
-		<div className="PaletteEditor">
+		<div className="HeaderPopover">
 			<button
 				className="DiagramWrapper-copy"
 				aria-expanded={open}
@@ -26,7 +26,11 @@ export function PaletteEditor({ editor, palette }: { editor: Editor; palette: Di
 				Palette
 			</button>
 			{open && (
-				<div className="PaletteEditor-panel" role="dialog" aria-label="Diagram palette">
+				<div
+					className="HeaderPopover-panel PaletteEditor"
+					role="dialog"
+					aria-label="Diagram palette"
+				>
 					<p>Extra colors for this diagram, shown in the style panel after the built-in ones.</p>
 					{PALETTE_SLOTS.map((slot) => (
 						<label key={slot} className="PaletteEditor-row">

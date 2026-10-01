@@ -39,6 +39,35 @@ const router = AutoRouter<IRequest, [env: Env, ctx: ExecutionContext]>({
 	// editors' pasted links get bookmark previews (editor-only: it fetches arbitrary URLs)
 	.get('/api/diagrams/:diagramId/unfurl', requireEditor, handleUnfurlRequest)
 
+	// saved versions of the diagram, and exports (editor-only: they're the whole document)
+	.get('/api/diagrams/:diagramId/versions', requireEditor, (request, env) =>
+		diagramRoom(request, env).listVersions()
+	)
+	.post('/api/diagrams/:diagramId/versions', requireEditor, async (request, env) => {
+		const body = (await request.json().catch(() => ({}))) as { label?: unknown }
+		const label = typeof body.label === 'string' ? body.label : undefined
+		return json(await diagramRoom(request, env).saveVersion(label), { status: 201 })
+	})
+	.get('/api/diagrams/:diagramId/versions/:versionId', requireEditor, async (request, env) => {
+		const snapshot = await diagramRoom(request, env).getVersion(request.params.versionId)
+		if (!snapshot) return error(404, 'No such version')
+		return download(snapshot, `${request.params.diagramId}-${request.params.versionId}.json`)
+	})
+	.post(
+		'/api/diagrams/:diagramId/versions/:versionId/restore',
+		requireEditor,
+		async (request, env) => {
+			const restored = await diagramRoom(request, env).restoreVersion(request.params.versionId)
+			return restored ? { ok: true } : error(404, 'No such version')
+		}
+	)
+	.get('/api/diagrams/:diagramId/export', requireEditor, async (request, env) =>
+		download(
+			await diagramRoom(request, env).exportCurrent(),
+			`${request.params.diagramId}-${new Date().toISOString().slice(0, 10)}.json`
+		)
+	)
+
 	.all('*', () => {
 		return new Response('Not found', { status: 404 })
 	})
@@ -68,6 +97,15 @@ async function requireEditor(request: IRequest, env: Env) {
 	if (!(await diagramRoom(request, env).isEditToken(bearerToken(request)))) {
 		return error(403, 'Edit link required')
 	}
+}
+
+function download(body: string, filename: string) {
+	return new Response(body, {
+		headers: {
+			'content-type': 'application/json',
+			'content-disposition': `attachment; filename="${filename.replace(/[^\w.-]/g, '_')}"`,
+		},
+	})
 }
 
 function forwardToDiagramRoom(request: IRequest, env: Env) {

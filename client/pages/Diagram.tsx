@@ -21,6 +21,7 @@ import { initialThemes } from '../palette/paletteTheme'
 import { usePalette } from '../palette/usePalette'
 import { assetUrls, licenseKey, shapeUtils } from '../tldrawConfig'
 import { useDiagramStore } from '../useDiagramStore'
+import { VersionsPanel } from '../versions/VersionsPanel'
 
 const components: TLComponents = { TopPanel: BracketPanel, StylePanel: BracketStylePanel }
 
@@ -104,7 +105,15 @@ function DiagramEditor({
 				diagramId={diagramId}
 				editor={editor}
 				editToken={editToken}
-				toolbar={editor && editToken && <PaletteEditor editor={editor} palette={palette} />}
+				toolbar={
+					editor &&
+					editToken && (
+						<>
+							<PaletteEditor editor={editor} palette={palette} />
+							<VersionsPanel diagramId={diagramId} editToken={editToken} />
+						</>
+					)
+				}
 			>
 				<Tldraw
 					licenseKey={licenseKey}

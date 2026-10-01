@@ -32,3 +32,18 @@ export function uploadDownloadPath(uploadId: string) {
 export function diagramUnfurlPath(diagramId: string, url: string) {
 	return `/api/diagrams/${diagramId}/unfurl?url=${encodeURIComponent(url)}`
 }
+
+/** GET to list a diagram's saved versions, POST ({ label? }) to save one; editors only */
+export function diagramVersionsPath(diagramId: string) {
+	return `/api/diagrams/${diagramId}/versions`
+}
+
+/** GET to download a saved version as JSON; POST to `${path}/restore` to restore it */
+export function diagramVersionPath(diagramId: string, versionId: string) {
+	return `/api/diagrams/${diagramId}/versions/${versionId}`
+}
+
+/** GET to download the diagram as it is now, as JSON */
+export function diagramExportPath(diagramId: string) {
+	return `/api/diagrams/${diagramId}/export`
+}

@@ -266,11 +266,11 @@ body {
 	text-overflow: ellipsis;
 }
 
-.PaletteEditor {
+.HeaderPopover {
 	position: relative;
 }
 
-.PaletteEditor-panel {
+.HeaderPopover-panel {
 	position: absolute;
 	top: calc(100% + 8px);
 	right: 0;
@@ -287,7 +287,7 @@ body {
 	box-shadow: 0 2px 12px var(--black-transparent-lighter);
 }
 
-.PaletteEditor-panel p {
+.HeaderPopover-panel p {
 	margin: 0 0 4px;
 	color: var(--black-transparent-dark);
 	font-size: 12px;
@@ -446,4 +446,83 @@ html.obs body {
 .ObsView .tl-frame-heading,
 .ObsView .tl-frame__body {
 	display: none;
+}
+
+.VersionsPanel {
+	width: 340px;
+	max-height: 70vh;
+	overflow-y: auto;
+}
+
+.VersionsPanel-save {
+	display: flex;
+	gap: 6px;
+}
+
+.VersionsPanel-save input {
+	flex: 1;
+	height: 26px;
+	padding: 0 8px;
+	border: 1px solid var(--gray-dark);
+	border-radius: 4px;
+	background: var(--background);
+	color: var(--text);
+}
+
+.VersionsPanel button {
+	padding: 3px 10px;
+	border: 1px solid var(--gray-dark);
+	border-radius: 4px;
+	background: var(--gray-light);
+	color: var(--text);
+	cursor: pointer;
+	font-size: 12px;
+}
+
+.VersionsPanel .VersionsPanel-link {
+	align-self: flex-start;
+	border: none;
+	background: none;
+	padding: 0;
+	color: var(--focus);
+	text-decoration: underline;
+}
+
+.VersionsPanel-message {
+	color: var(--text) !important;
+}
+
+.VersionsPanel-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	font-size: 12px;
+}
+
+.VersionsPanel-list li {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 8px 0;
+	border-top: 1px solid var(--gray-dark);
+}
+
+.VersionsPanel-kind {
+	padding: 1px 6px;
+	border-radius: 999px;
+	background: var(--gray-light);
+	font-size: 11px;
+}
+
+.VersionsPanel-kind[data-kind='manual'] {
+	background: hsl(217, 89%, 92%);
+}
+
+.VersionsPanel-date {
+	color: var(--black-transparent-dark);
+}
+
+.VersionsPanel-actions {
+	display: flex;
+	gap: 6px;
 }
