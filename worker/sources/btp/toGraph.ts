@@ -36,6 +36,10 @@ export function btpRowsToGraph(rows: BtpTourneyRows): BracketGraph {
 	)
 
 	const playerRoundsByRound = groupBy(rows.playerRounds, (pr) => pr.round_id)
+	const playerRoundsByPlayer = groupBy(
+		[...rows.playerRounds].sort((a, b) => a.id - b.id),
+		(pr) => pr.player_tourney_id
+	)
 	const advancementsFrom = groupBy(advancements, (a) => a.round_id)
 	const advancementsInto = groupBy(advancements, (a) => a.destination_round_id)
 
@@ -51,18 +55,22 @@ export function btpRowsToGraph(rows: BtpTourneyRows): BracketGraph {
 			(sum, a) => sum + (a.rank_end == null ? 1 : a.rank_end - a.rank_start + 1),
 			0
 		)
+		const outgoing = advancementsFrom.get(round.id) ?? []
+		const exits = playerRounds.map((pr) => findExit(pr, outgoing, playerRoundsByPlayer))
+		const placements = consistentPlacements(exits, playerRounds.length)
 		return {
 			key: btpKeys.round(round.id),
 			phaseKey: round.round_pool_id != null ? btpKeys.pool(round.round_pool_id) : undefined,
 			title: roundTitle(round.name) || `Round ${round.id}`,
 			status: (round.status && statusMap[round.status]) || 'pending',
 			capacity: Math.max(playerRounds.length, incomingWidth, 1),
-			entrants: playerRounds.map((pr) => ({
+			entrants: playerRounds.map((pr, i) => ({
 				key: btpKeys.player(pr.player_tourney_id),
 				name: pr.player_tourneys.player_name,
 				seed: pr.player_tourneys.seed ?? undefined,
 				imageUrl: pr.player_tourneys.player_img ?? undefined,
-				placement: findPlacement(pr, advancementsFrom.get(round.id) ?? [], playerRoundsByRound),
+				advancedVia: exits[i] && btpKeys.advancement(exits[i].advancement.id),
+				placement: placements[i],
 			})),
 		}
 	})
@@ -86,35 +94,83 @@ export function btpRowsToGraph(rows: BtpTourneyRows): BracketGraph {
 	}
 }
 
+interface Exit {
+	advancement: RoundAdvancementRow
+	/** the player's row in the destination round */
+	arrival: PlayerRoundRow
+}
+
 /**
- * A player's finishing rank in a round isn't stored, but when they advance, their row in the
- * destination round records that rank as sort_order. So look for the player in this round's
- * destinations.
+ * Which advancement a player took out of a round, found by where they turned up next.
  *
- * A player can legitimately turn up in more than one destination of the same round (e.g. the
- * Winners Finals loser drops to Losers Finals, wins it, and reaches Grand Finals, which is also a
- * Winners Finals destination). The row this round created is the earliest one made after the
- * player entered this round, so take that. player_rounds ids are an identity column, so they
- * order by creation.
+ * Blame the Pads doesn't store a round's results (it computes them from scores), so this is
+ * the most reliable record of them. Only the player's very next row counts (player_rounds ids
+ * are an identity column, so they order by creation): a player can later reach another of this
+ * round's destinations by a different route (e.g. lose Winners Finals, win Losers Finals, reach
+ * Grand Finals), and admins sometimes move players between rounds by hand. If the next row isn't
+ * in one of this round's destinations, the player didn't leave by an advancement.
  */
-function findPlacement(
+function findExit(
 	entry: PlayerRoundRow,
 	outgoing: RoundAdvancementRow[],
-	playerRoundsByRound: Map<number, PlayerRoundRow[]>
-): number | undefined {
-	let best: PlayerRoundRow | undefined
-	for (const advancement of outgoing) {
-		for (const candidate of playerRoundsByRound.get(advancement.destination_round_id) ?? []) {
-			if (candidate.player_tourney_id !== entry.player_tourney_id) continue
-			if (candidate.id <= entry.id || candidate.sort_order == null) continue
-			const rank = candidate.sort_order
-			const inRange =
-				rank >= advancement.rank_start &&
-				(advancement.rank_end == null || rank <= advancement.rank_end)
-			if (inRange && (!best || candidate.id < best.id)) best = candidate
-		}
+	playerRoundsByPlayer: Map<number, PlayerRoundRow[]>
+): Exit | undefined {
+	const arrival = playerRoundsByPlayer
+		.get(entry.player_tourney_id)
+		?.find((candidate) => candidate.id > entry.id)
+	if (!arrival) return undefined
+
+	const candidates = outgoing.filter((a) => a.destination_round_id === arrival.round_id)
+	if (candidates.length === 1) return { advancement: candidates[0], arrival }
+	// Several rank ranges lead to the same round; only sort_order can tell them apart.
+	const matching = candidates.filter((a) => inRange(arrival.sort_order, a))
+	return matching.length === 1 ? { advancement: matching[0], arrival } : undefined
+}
+
+/**
+ * The exact rank, when the advancement taken pins it down.
+ *
+ * sort_order on the arrival row can't be trusted on its own: before Blame the Pads' 2026-09-15
+ * advancement rework it was the position within the advancing (or non-advancing) group rather
+ * than the absolute rank, and players placed by hand have none. The two conventions agree only
+ * for a range starting at rank 1.
+ */
+function placementFromExit({ advancement, arrival }: Exit, entrantCount: number) {
+	const { rank_start, rank_end } = advancement
+	if (rank_end === rank_start) return rank_start
+	if (rank_end == null && rank_start === entrantCount) return rank_start
+	if (rank_start === 1 && inRange(arrival.sort_order, advancement)) return arrival.sort_order!
+	return undefined
+}
+
+/**
+ * Placements for a round's entrants, dropping any the data contradicts: more players leaving by
+ * an advancement than it has places (a bracket reset, or a hand-made move), or two players with
+ * the same rank.
+ */
+function consistentPlacements(exits: (Exit | undefined)[], entrantCount: number) {
+	const exitCounts = new Map<RoundAdvancementRow, number>()
+	for (const exit of exits) {
+		if (exit) exitCounts.set(exit.advancement, (exitCounts.get(exit.advancement) ?? 0) + 1)
 	}
-	return best?.sort_order ?? undefined
+	const placements = exits.map((exit) => {
+		if (!exit) return undefined
+		const { rank_start, rank_end } = exit.advancement
+		const places = rank_end == null ? Infinity : rank_end - rank_start + 1
+		if (exitCounts.get(exit.advancement)! > places) return undefined
+		return placementFromExit(exit, entrantCount)
+	})
+	return placements.map((p) =>
+		p != null && placements.filter((other) => other === p).length > 1 ? undefined : p
+	)
+}
+
+function inRange(rank: number | null, advancement: RoundAdvancementRow) {
+	return (
+		rank != null &&
+		rank >= advancement.rank_start &&
+		(advancement.rank_end == null || rank <= advancement.rank_end)
+	)
 }
 
 function groupBy<T, K>(items: T[], key: (item: T) => K): Map<K, T[]> {

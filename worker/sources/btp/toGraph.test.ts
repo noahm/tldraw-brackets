@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { de4Late, de4Midway } from '../fixtures/de4'
+import type { BtpTourneyRows } from './rows'
 import { btpRowsToGraph, roundTitle } from './toGraph'
 
 function placements(graph: ReturnType<typeof btpRowsToGraph>, matchKey: string) {
@@ -91,4 +92,69 @@ describe('btpRowsToGraph', () => {
 		})
 		expect(graph.edges.find((e) => e.key === 'btp:adv:999')).toBeUndefined()
 	})
+
+	it('records which advancement each player left by', () => {
+		const graph = btpRowsToGraph(de4Late)
+		const wf = graph.matches.find((m) => m.key === 'btp:round:103')!
+		expect(wf.entrants.map((e) => [e.name, e.advancedVia])).toEqual([
+			['Alice', 'btp:adv:205'], // Winner -> Grand Finals
+			['Carol', 'btp:adv:206'], // Loser -> Losers Finals
+		])
+	})
+
+	it("doesn't depend on sort_order, which older Blame the Pads data records differently", () => {
+		// Before Blame the Pads' 2026-09-15 rework, sort_order restarted at 1 for each group, so
+		// semifinal losers arrived in Losers SF with sort_order 1, and hand-placed players have none.
+		const rows = withPlayerRounds(de4Midway, (pr) =>
+			pr.round_id === 104 ? { ...pr, sort_order: pr.id === 306 ? 1 : null } : pr
+		)
+		const graph = btpRowsToGraph(rows)
+		expect(placements(graph, 'btp:round:101')).toEqual({ Alice: 1, Bob: 2 })
+		expect(placements(graph, 'btp:round:102')).toEqual({ Carol: 1, Dave: 2 })
+	})
+
+	it('ignores moves an admin made by hand', () => {
+		// Bob is moved by hand from WSF:M1 straight into Losers Finals, which isn't one of its
+		// destinations, instead of dropping to Losers SF.
+		const rows: BtpTourneyRows = {
+			...de4Midway,
+			playerRounds: [
+				...de4Midway.playerRounds.filter((pr) => pr.id !== 306),
+				{
+					...de4Midway.playerRounds.find((pr) => pr.id === 306)!,
+					id: 320,
+					round_id: 105,
+					sort_order: null,
+				},
+			],
+		}
+		const graph = btpRowsToGraph(rows)
+		const wsf1 = graph.matches.find((m) => m.key === 'btp:round:101')!
+		expect(wsf1.entrants.map((e) => [e.name, e.advancedVia, e.placement])).toEqual([
+			['Alice', 'btp:adv:201', 1],
+			['Bob', undefined, undefined],
+		])
+	})
+
+	it('drops placements the data contradicts, like both players going to a bracket reset', () => {
+		const rows = withPlayerRounds(de4Late, (pr) => pr)
+		rows.rounds = rows.rounds.map((r) => (r.id === 106 ? { ...r, status: 'Complete' } : r))
+		rows.playerRounds.push(
+			{ ...rows.playerRounds.find((pr) => pr.id === 309)!, id: 313, round_id: 107, sort_order: 1 },
+			{ ...rows.playerRounds.find((pr) => pr.id === 312)!, id: 314, round_id: 107, sort_order: 1 }
+		)
+		const graph = btpRowsToGraph(rows)
+		const gf = graph.matches.find((m) => m.key === 'btp:round:106')!
+		expect(gf.entrants.map((e) => [e.name, e.advancedVia, e.placement])).toEqual([
+			['Alice', 'btp:adv:209', undefined],
+			['Carol', 'btp:adv:209', undefined],
+		])
+	})
 })
+
+function withPlayerRounds(
+	rows: BtpTourneyRows,
+	map: (pr: BtpTourneyRows['playerRounds'][number]) => BtpTourneyRows['playerRounds'][number]
+): BtpTourneyRows {
+	return { ...rows, rounds: [...rows.rounds], playerRounds: rows.playerRounds.map(map) }
+}

@@ -22,8 +22,8 @@ Phases 1 and 2 are done:
   `DiagramRoom` polls it while anyone is connected and pushes a normalized `BracketGraph` to every
   session. The "Show data" panel displays that graph; nothing is drawn on the canvas from it yet.
 
-The `btp` adapter has been tested against a local stand-in for Blame the Pads' Supabase, not yet
-against the real one. See [Plan](#plan) for what comes next.
+The `btp` adapter has been checked against every started tourney in Blame the Pads' real database
+(36 at the time). See [Plan](#plan) for what comes next.
 
 ## Development
 
@@ -132,11 +132,19 @@ interface BracketGraph {
     (`"WR1:M1: Alice vs. Bob"` → `WR1:M1`).
   - Entrants come from `player_rounds`.
   - Empty slots are labelled from incoming edges (e.g. "Loser of WF").
-- **Placements:** Blame the Pads doesn't store a round's results; it computes them from scores.
-  But when a player advances, their new `player_rounds.sort_order` is the rank they finished with
-  in the round they came from. So a completed round's placements are recovered from where its
-  players went next. Players who were eliminated (and the final round's players) have no
-  recoverable placement; computing those from scores is future work.
+- **Results:** Blame the Pads doesn't store a round's results; it computes them from scores. So
+  each entrant's result is recovered from where the player turned up next:
+  - `advancedVia` is the advancement whose destination holds the player's next `player_rounds`
+    row. If that next row isn't in one of the round's destinations, an admin moved the player by
+    hand and there's no result.
+  - `placement` is set only when that advancement pins down the rank (e.g. "Winner 1–1", or
+    "Loser 2+" in a 1v1). Data that contradicts itself, such as both Grand Finals players going
+    to a bracket reset, gets no placement.
+  - `sort_order` is not trusted on its own. Before Blame the Pads' 2026-09-15 advancement rework
+    it was the position within the advancing or non-advancing group, since then it's the absolute
+    rank, and hand-placed players have none.
+  - Eliminated players and the final round get no result. Computing those from scores is future
+    work.
 - **No agreed schema contract.** Validate rows with zod, keep the one select string in a single
   file, and run a scheduled CI check against a known tourney so drift is caught quickly.
   Optionally, ask Blame the Pads for a stable view or RPC.

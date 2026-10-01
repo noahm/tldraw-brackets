@@ -14,7 +14,9 @@ export interface GraphEntrant {
 	name: string
 	seed?: number
 	imageUrl?: string
-	/** finishing position within this match, when the source can tell us */
+	/** key of the edge this entrant left the match by, once they've moved on */
+	advancedVia?: string
+	/** exact finishing position within this match, when the source pins it down */
 	placement?: number
 }
 
