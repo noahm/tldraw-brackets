@@ -1,0 +1,34 @@
+name = "tldraw-brackets"
+main = "worker/worker.ts"
+compatibility_date = "2025-05-08"
+compatibility_flags = ["nodejs_compat"]
+upload_source_maps = true
+preview_urls = true
+
+# Deploys to tldraw-brackets.<account>.workers.dev until a custom domain is chosen.
+# The tldraw license key is tied to the domain, so register whichever one this ends up on.
+
+[observability]
+enabled = true
+
+# The client SPA is served from this same worker.
+[assets]
+not_found_handling = "single-page-application"
+directory = "./dist/client"
+
+# One DiagramRoom durable object per diagram, holding the tldraw document.
+[durable_objects]
+bindings = [{ name = "DIAGRAM_ROOM", class_name = "DiagramRoom" }]
+
+# Durable objects require migrations to create/modify/delete them.
+# new_sqlite_classes gives each instance its own SQLite storage.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["DiagramRoom"]
+
+# Uploaded images and videos (logos, backgrounds) live in R2.
+# Diagram documents live in each DiagramRoom's SQLite storage, not here.
+[[r2_buckets]]
+binding = "ASSETS_BUCKET"
+bucket_name = "tldraw-brackets-assets"
+preview_bucket_name = "tldraw-brackets-assets-preview"
