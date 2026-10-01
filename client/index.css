@@ -192,3 +192,76 @@ body {
 	color: var(--black-transparent-dark);
 	font-size: 12px;
 }
+
+.BracketPanel {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-top: 8px;
+	padding: 6px 6px 6px 14px;
+	background: var(--background);
+	color: var(--text);
+	border: 1px solid var(--gray-dark);
+	border-radius: 8px;
+	box-shadow: 0 2px 8px var(--black-transparent-lighter);
+	font-size: 13px;
+	pointer-events: all;
+}
+
+.BracketPanel button {
+	padding: 4px 12px;
+	border: none;
+	border-radius: 6px;
+	background: var(--focus);
+	color: white;
+	font-weight: 700;
+	cursor: pointer;
+}
+
+.MatchCard-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.MatchCard-title {
+	font-weight: 700;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.MatchCard-status {
+	font-size: 0.75em;
+	white-space: nowrap;
+}
+
+.MatchCard-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	white-space: nowrap;
+}
+
+.MatchCard-seed {
+	font-size: 0.75em;
+	min-width: 1.4em;
+	text-align: right;
+}
+
+.MatchCard-name {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.MatchCard-result {
+	font-size: 0.75em;
+}
+
+.MatchCard-placeholder {
+	font-style: italic;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}

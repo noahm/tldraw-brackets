@@ -1,4 +1,10 @@
-import type { BracketGraph, GraphEdge, GraphMatch, MatchStatus } from '../../../shared/bracketGraph'
+import {
+	edgeSlots,
+	type BracketGraph,
+	type GraphEdge,
+	type GraphMatch,
+	type MatchStatus,
+} from '../../../shared/bracketGraph'
 import type { BtpTourneyRows, PlayerRoundRow, RoundAdvancementRow } from './rows'
 
 export const btpKeys = {
@@ -49,32 +55,6 @@ export function btpRowsToGraph(rows: BtpTourneyRows): BracketGraph {
 			a.id - b.id
 	)
 
-	const matches: GraphMatch[] = rounds.map((round) => {
-		const playerRounds = [...(playerRoundsByRound.get(round.id) ?? [])].sort((a, b) => a.id - b.id)
-		const incomingWidth = (advancementsInto.get(round.id) ?? []).reduce(
-			(sum, a) => sum + (a.rank_end == null ? 1 : a.rank_end - a.rank_start + 1),
-			0
-		)
-		const outgoing = advancementsFrom.get(round.id) ?? []
-		const exits = playerRounds.map((pr) => findExit(pr, outgoing, playerRoundsByPlayer))
-		const placements = consistentPlacements(exits, playerRounds.length)
-		return {
-			key: btpKeys.round(round.id),
-			phaseKey: round.round_pool_id != null ? btpKeys.pool(round.round_pool_id) : undefined,
-			title: roundTitle(round.name) || `Round ${round.id}`,
-			status: (round.status && statusMap[round.status]) || 'pending',
-			capacity: Math.max(playerRounds.length, incomingWidth, 1),
-			entrants: playerRounds.map((pr, i) => ({
-				key: btpKeys.player(pr.player_tourney_id),
-				name: pr.player_tourneys.player_name,
-				seed: pr.player_tourneys.seed ?? undefined,
-				imageUrl: pr.player_tourneys.player_img ?? undefined,
-				advancedVia: exits[i] && btpKeys.advancement(exits[i].advancement.id),
-				placement: placements[i],
-			})),
-		}
-	})
-
 	const edges: GraphEdge[] = [...advancements]
 		.sort((a, b) => a.round_id - b.round_id || a.rank_start - b.rank_start || a.id - b.id)
 		.map((a) => ({
@@ -85,6 +65,53 @@ export function btpRowsToGraph(rows: BtpTourneyRows): BracketGraph {
 			rankEnd: a.rank_end ?? undefined,
 			label: a.label ?? undefined,
 		}))
+
+	// How many players a round expects: whoever's there already, or everyone its incoming
+	// advancements will bring, whichever is more. Open-ended advancements ("3rd and below")
+	// depend on the size of the round they come from, so this works back through the bracket.
+	const capacities = new Map<number, number>()
+	const capacity = (roundId: number, visiting = new Set<number>()): number => {
+		const known = capacities.get(roundId)
+		if (known != null) return known
+		const present = playerRoundsByRound.get(roundId)?.length ?? 0
+		if (visiting.has(roundId)) return Math.max(present, 1) // a cycle; brackets shouldn't have one
+		visiting.add(roundId)
+		const arriving = (advancementsInto.get(roundId) ?? []).reduce(
+			(sum, a) =>
+				sum +
+				edgeSlots(
+					{ rankStart: a.rank_start, rankEnd: a.rank_end ?? undefined },
+					capacity(a.round_id, visiting)
+				),
+			0
+		)
+		visiting.delete(roundId)
+		const result = Math.max(present, arriving, 1)
+		capacities.set(roundId, result)
+		return result
+	}
+
+	const matches: GraphMatch[] = rounds.map((round) => {
+		const playerRounds = [...(playerRoundsByRound.get(round.id) ?? [])].sort((a, b) => a.id - b.id)
+		const outgoing = advancementsFrom.get(round.id) ?? []
+		const exits = playerRounds.map((pr) => findExit(pr, outgoing, playerRoundsByPlayer))
+		const placements = consistentPlacements(exits, playerRounds.length)
+		return {
+			key: btpKeys.round(round.id),
+			phaseKey: round.round_pool_id != null ? btpKeys.pool(round.round_pool_id) : undefined,
+			title: roundTitle(round.name) || `Round ${round.id}`,
+			status: (round.status && statusMap[round.status]) || 'pending',
+			capacity: capacity(round.id),
+			entrants: playerRounds.map((pr, i) => ({
+				key: btpKeys.player(pr.player_tourney_id),
+				name: pr.player_tourneys.player_name,
+				seed: pr.player_tourneys.seed ?? undefined,
+				imageUrl: pr.player_tourneys.player_img ?? undefined,
+				advancedVia: exits[i] && btpKeys.advancement(exits[i].advancement.id),
+				placement: placements[i],
+			})),
+		}
+	})
 
 	return {
 		title: rows.tourney.name,

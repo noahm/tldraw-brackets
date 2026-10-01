@@ -14,13 +14,16 @@ The first (and currently only) supported backend is [Blame the Pads](https://git
 
 ## Status
 
-Phases 1 and 2 are done:
+Phases 1–3 are done:
 
 - **Phase 1:** the [tldraw multiplayer starter kit](https://tldraw.dev/starter-kits/multiplayer),
   adapted to this project's naming and structure.
 - **Phase 2:** each diagram can be pointed at a Blame the Pads tourney (or a bundled fixture). The
   `DiagramRoom` polls it while anyone is connected and pushes a normalized `BracketGraph` to every
-  session. The "Show data" panel displays that graph; nothing is drawn on the canvas from it yet.
+  session. The "Show data" panel displays that graph for debugging.
+- **Phase 3:** "Generate layout" draws the bracket as hand-drawn match cards joined by elbow
+  arrows. Cards show live entrants, results and "Winner of …" placeholders, and keep whatever
+  position and styling admins give them as the tournament progresses.
 
 The `btp` adapter has been checked against every started tourney in Blame the Pads' real database
 (36 at the time). See [Plan](#plan) for what comes next.
@@ -151,16 +154,32 @@ interface BracketGraph {
 
 ### Layout and editing
 
+- **Match cards** (`bracket-match` shape, `shared/matchCardShape.ts` + `client/bracket/`):
+  - Props are just `matchKey`, size, and tldraw's own style props (color, fill, dash, size, font),
+    so the built-in style panel and hand-drawn rendering work as for any tldraw shape.
+  - Entrants, results and status are looked up from live data by `matchKey` at render time
+    (`shared/matchCardModel.ts`). Empty slots name where their player will come from, e.g.
+    "Loser of WR1:M1".
+  - Changing a card's size style scales the card with its text.
+  - A card whose match disappears from the source is dimmed and marked "Not in source".
 - **Starting layouts are an explicit admin action, never automatic.**
-  - "Generate layout" builds cards and bound arrows from the graph on the client.
-  - New rounds appearing mid-event show an "N rounds not placed" banner with a Place button.
-  - Cards use fixed shape ids (`createShapeId('btp:round:123')`), so concurrent clicks by two
-    editors can't duplicate cards, and the server never builds tldraw records itself.
-- **Layout heuristics:**
-  1. Read-only copies of Blame the Pads' bracket template JSON, used as presets with coordinates
-     and matched to rounds by name prefix.
-  2. Fallback: column = longest path from first matches, lanes by pool name (`/loser/i`, `/grand/i`).
-  3. It only needs to be a decent starting point; admins rearrange from there.
+  - "Generate layout" builds cards and elbow arrows bound to them, as one undoable step.
+  - Matches that appear in the source later show a "N matches aren't on the diagram yet" banner.
+    "Place them" adds just those, lined up with wherever admins have moved the rest.
+  - Card and arrow ids derive from graph keys (`createShapeId('btp:round:123')`), so concurrent
+    clicks by two editors can't duplicate anything, and the server never builds tldraw records.
+  - Arrows are only added alongside new cards, so ones an admin deleted stay deleted.
+  - Drops from the main bracket into the losers bracket get no arrow by default; the losers
+    card's placeholder already says where its players come from.
+- **Layout** (`client/bracket/layout.ts`), which only needs to be a decent first draft:
+  - Column = longest path from the bracket's first matches (phase order if there are no
+    advancements).
+  - Lanes by name: losers (`LR…`, "Loser", "Redemption") below the main bracket; grand finals
+    and reset to the right of both.
+  - Within a lane, each match is centered on its feeders, giving elimination brackets their
+    usual shape.
+  - Checked against real double elimination, single elimination and waterfall tourneys. Copying
+    Blame the Pads' template coordinates as presets turned out to be unnecessary.
 - **Styling:** tldraw's hand-drawn look by default. A diagram-level theme record supplies default
   and per-status colors. Cards store only admin overrides (hex colors), set through a style panel
   extension with a color picker.
@@ -188,9 +207,9 @@ interface BracketGraph {
 2. ✅ **Read path.** `btp` adapter, `BracketGraph`, alarm polling, custom-message delivery, and a
    debug view of the raw graph. A new session is sent live data once the room has processed its
    sync `connect` message (via `onAfterReceiveMessage`), so no separate HTTP fetch is needed.
-   Still to do: confirm against Blame the Pads' real Supabase.
-3. **Card shape and Generate layout.** Custom card shape in the shared schema, placeholders,
-   template presets, "unplaced rounds" banner.
+   Checked against Blame the Pads' real Supabase.
+3. ✅ **Card shape and Generate layout.** Custom card shape in the shared schema, placeholders,
+   "unplaced matches" banner.
 4. **Editing polish.** Theme and hex colors, edge styles.
 5. **Access and output.** D1 registry, edit links, read-only viewer, OBS route.
 6. **Hardening.** R2 versions and restore, schema migrations, schema-drift CI check against

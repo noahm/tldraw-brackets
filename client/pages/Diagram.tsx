@@ -2,8 +2,11 @@ import { getAssetUrlsByImport } from '@tldraw/assets/imports.vite'
 import { useSync } from '@tldraw/sync'
 import { ReactNode, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Tldraw } from 'tldraw'
+import { Tldraw, type TLComponents } from 'tldraw'
 import { diagramConnectPath } from '../../shared/routes'
+import { diagramSchema } from '../../shared/schema'
+import { BracketPanel } from '../bracket/BracketPanel'
+import { MatchCardShapeUtil } from '../bracket/MatchCardShapeUtil'
 import { getBookmarkPreview } from '../getBookmarkPreview'
 import { LiveDataPanel } from '../live/LiveDataPanel'
 import { LiveDataProvider, useNewLiveDataStore } from '../live/liveDataStore'
@@ -18,6 +21,9 @@ const licenseKey = import.meta.env.VITE_TLDRAW_LICENSE_KEY
 // than cdn.tldraw.com. Keeps them in lockstep with the SDK version and works without the CDN.
 const assetUrls = getAssetUrlsByImport()
 
+const shapeUtils = [MatchCardShapeUtil]
+const components: TLComponents = { TopPanel: BracketPanel }
+
 export function Diagram() {
 	const { diagramId = '' } = useParams<{ diagramId: string }>()
 	const liveData = useNewLiveDataStore()
@@ -30,6 +36,8 @@ export function Diagram() {
 		assets: multiplayerAssetStore,
 		// ...and where to deliver the tournament data the server pushes alongside the document.
 		onCustomMessageReceived: liveData.receive,
+		// The exact schema the server validates against, custom shapes included.
+		schema: diagramSchema,
 	})
 
 	return (
@@ -41,10 +49,14 @@ export function Diagram() {
 					// we can pass the connected store into the Tldraw component which will handle
 					// loading states & enable multiplayer UX like cursors & a presence menu
 					store={store}
+					shapeUtils={shapeUtils}
+					components={components}
 					options={{ deepLinks: true }}
 					onMount={(editor) => {
 						// when the editor is ready, we need to register our bookmark unfurling service
 						editor.registerExternalAssetHandler('url', getBookmarkPreview)
+						// handy for poking at the editor from devtools (and browser tests)
+						if (import.meta.env.DEV) Object.assign(window, { editor })
 					}}
 				/>
 			</DiagramWrapper>

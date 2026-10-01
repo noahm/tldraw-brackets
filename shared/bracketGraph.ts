@@ -46,3 +46,15 @@ export interface BracketGraph {
 	matches: GraphMatch[]
 	edges: GraphEdge[]
 }
+
+/**
+ * How many players an edge carries out of a match of the given size. An open-ended range
+ * ("3rd and below") carries everyone from its first rank down.
+ */
+export function edgeSlots(
+	edge: Pick<GraphEdge, 'rankStart' | 'rankEnd'>,
+	fromCapacity: number
+): number {
+	if (edge.rankEnd != null) return edge.rankEnd - edge.rankStart + 1
+	return Math.max(1, fromCapacity - edge.rankStart + 1)
+}
