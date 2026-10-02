@@ -1,0 +1,31 @@
+name: start.gg token and schema check
+
+# start.gg API tokens expire a year after they're made and can only be replaced by hand. This
+# fails from 30 days before the date in worker/sources/startgg/token.ts, which makes GitHub email
+# a reminder: run scripts/rotate-startgg-token.sh. It also reads a finished event through the
+# startgg adapter, so a change to start.gg's API shows up here rather than as a broken diagram.
+# Needs the STARTGG_TOKEN repository secret (the same token the worker gets with
+# `wrangler secret put`); without it, the check is skipped.
+
+on:
+  schedule:
+    - cron: '23 9 * * *'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      STARTGG_TOKEN: ${{ secrets.STARTGG_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.STARTGG_TOKEN != ''
+      - uses: actions/setup-node@v4
+        if: env.STARTGG_TOKEN != ''
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        if: env.STARTGG_TOKEN != ''
+      - run: npm run check:startgg
+        if: env.STARTGG_TOKEN != ''

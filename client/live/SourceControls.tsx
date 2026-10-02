@@ -1,12 +1,12 @@
 import { FormEvent, useState } from 'react'
 import { diagramSourcePath } from '../../shared/routes'
-import { describeSource, type DiagramSource } from '../../shared/source'
+import { describeSource, parseStartggUrl, type DiagramSource } from '../../shared/source'
 import { authHeaders } from '../access'
 import { useLiveData } from './liveDataStore'
 
 // Where the diagram's tournament data comes from. Editors only: the server checks the token.
 
-const FIXTURES = ['de4-midway', 'de4-late']
+const FIXTURES = ['de4-midway', 'de4-late', 'startgg-de4']
 
 export function SourceControls({ diagramId, editToken }: { diagramId: string; editToken: string }) {
 	const live = useLiveData()
@@ -38,10 +38,14 @@ export function SourceControls({ diagramId, editToken }: { diagramId: string; ed
 		const trimmed = value.trim()
 		const fixture = trimmed.match(/^fixture:([a-z0-9-]+)$/)
 		if (fixture) return save({ kind: 'fixture', name: fixture[1] })
+		const startgg = parseStartggUrl(trimmed)
+		if (startgg) return save(startgg)
 		// accept a bare id, or any pasted Blame the Pads URL within a tourney
 		const id = Number((trimmed.match(/\/tourney\/(\d+)/) ?? trimmed.match(/^(\d+)$/))?.[1])
 		if (Number.isSafeInteger(id) && id > 0) return save({ kind: 'btp', tourneyId: id })
-		setSaveError('Enter a Blame the Pads tourney id or URL, or fixture:<name>')
+		setSaveError(
+			'Enter a Blame the Pads tourney id or URL, a start.gg event or bracket URL, or fixture:<name>'
+		)
 	}
 
 	return (
@@ -52,7 +56,7 @@ export function SourceControls({ diagramId, editToken }: { diagramId: string; ed
 			<input
 				value={value}
 				onChange={(e) => setValue(e.target.value)}
-				placeholder="tourney id or URL"
+				placeholder="tourney id, BTP or start.gg URL"
 				list="source-fixtures"
 				aria-label="tournament source"
 				disabled={saving}

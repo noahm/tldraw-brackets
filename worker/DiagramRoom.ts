@@ -16,10 +16,13 @@ import {
 	VERSION_LABEL_MAX_LENGTH,
 } from '../shared/versions'
 import { bearerToken, hashToken, sameHash, TICKET_TTL_MS } from './access'
-import { fetchGraph } from './sources'
+import { readSource, SourceError } from './sources'
 import { VersionStore } from './versions'
 
-/** How often to re-read the source while anyone has the diagram open. */
+/**
+ * How often the alarm runs while anyone has the diagram open. Each source says how soon it may
+ * be read again (start.gg's rate limit is much tighter than Blame the Pads'), so a tick may skip it.
+ */
 const POLL_INTERVAL_MS = 5_000
 const SOURCE_STORAGE_KEY = 'source'
 const EDIT_TOKEN_HASH_KEY = 'editTokenHash'
@@ -60,6 +63,8 @@ export class DiagramRoom extends DurableObject<Env> {
 	/** In memory only; rebuilt from the source after the DO wakes from hibernation. */
 	private liveData: LiveDataState | null = null
 	private refreshing: Promise<LiveDataState> | null = null
+	/** When the source may next be read. In memory only: waking up costs at most one early read. */
+	private nextReadAt = 0
 	private readonly versions: VersionStore
 
 	constructor(ctx: DurableObjectState, env: Env) {
@@ -203,6 +208,7 @@ export class DiagramRoom extends DurableObject<Env> {
 
 		// Start over: the old graph belongs to the old source.
 		this.liveData = null
+		this.nextReadAt = 0
 		const state = await this.refresh()
 		await this.ensurePolling()
 		return state
@@ -246,7 +252,8 @@ export class DiagramRoom extends DurableObject<Env> {
 		if (!source) return { source: null, graph: null, updatedAt: null, error: null }
 
 		try {
-			const graph = await fetchGraph(source, this.env)
+			const { graph, nextReadMs } = await readSource(source, this.env)
+			this.nextReadAt = Date.now() + nextReadMs
 			const graphChanged = JSON.stringify(graph) !== JSON.stringify(previous?.graph)
 			return {
 				source,
@@ -256,6 +263,7 @@ export class DiagramRoom extends DurableObject<Env> {
 			}
 		} catch (e) {
 			const message = e instanceof Error ? e.message : String(e)
+			this.nextReadAt = Date.now() + ((e instanceof SourceError && e.retryAfterMs) || 0)
 			console.error(`Failed to read ${source.kind} source:`, message)
 			// Keep showing the last good graph while the source is failing.
 			const keepError = previous?.error?.message === message
@@ -287,7 +295,9 @@ export class DiagramRoom extends DurableObject<Env> {
 
 		// Make sure sessions that survived hibernation are back in the room to receive updates.
 		this.getOrCreateRoom()
-		if (await this.ctx.storage.get(SOURCE_STORAGE_KEY)) await this.refresh()
+		if (Date.now() >= this.nextReadAt && (await this.ctx.storage.get(SOURCE_STORAGE_KEY))) {
+			await this.refresh()
+		}
 		await this.autoSaveVersion()
 		await this.ctx.storage.setAlarm(Date.now() + POLL_INTERVAL_MS)
 	}

@@ -9,8 +9,9 @@ layout or styling admins have applied.
 This is a **read-only visualization tool**. It reads tournament data from an external backend and
 persists only its own diagram data. Nothing here ever writes back to a tournament backend.
 
-The first (and currently only) supported backend is [Blame the Pads](https://github.com/AlanCooper509/piu-tourney-maker)
-(formerly PIU Tourney Maker), identified throughout this codebase as `btp`.
+Two backends are supported: [Blame the Pads](https://github.com/AlanCooper509/piu-tourney-maker)
+(formerly PIU Tourney Maker), identified throughout this codebase as `btp`, and
+[start.gg](https://start.gg), identified as `startgg`.
 
 ## Status
 
@@ -39,6 +40,8 @@ All six phases are done:
   Cards can also have their own text color, and each diagram picks (or hides) its "live" and "up
   next" badge colors.
 
+After phase 6, a `startgg` adapter was added: see [its section](#the-startgg-adapter-read-only).
+
 The `btp` adapter has been checked against every started tourney in Blame the Pads' real database
 (36 at the time). See [Plan](#plan) for what comes next.
 
@@ -51,6 +54,8 @@ npm run typecheck
 npm test           # unit tests (vitest), offline
 npm run check:btp  # the btp adapter against Blame the Pads' live database (needs the two
                    # BTP_SUPABASE_* variables in the environment)
+npm run check:startgg # the start.gg token's expiry, and the startgg adapter against the live
+                   # API (needs STARTGG_TOKEN in the environment)
 npm run format     # prettier
 npm run build
 npm run deploy     # build + wrangler deploy (needs a Cloudflare account)
@@ -66,8 +71,11 @@ To give a diagram tournament data, type into the source box in its header:
 - a Blame the Pads tourney id or URL. This needs `BTP_SUPABASE_URL` and `BTP_SUPABASE_ANON_KEY`
   in `.dev.vars` (copy `.dev.vars.example`). Both are the public values Blame the Pads' own
   frontend uses.
-- `fixture:de4-midway` or `fixture:de4-late`: bundled snapshots of a 4-player double elimination
-  bracket (`worker/sources/fixtures/`), which need no network access.
+- a start.gg event link, or a link to one phase or pool from the event's Brackets page
+  (`…/event/<event>/brackets/<phaseId>/<poolId>`). This needs `STARTGG_TOKEN` in `.dev.vars`.
+  Events with more than 16 pools must be narrowed to a phase or pool.
+- `fixture:de4-midway`, `fixture:de4-late` or `fixture:startgg-de4`: bundled snapshots of a
+  4-player double elimination bracket (`worker/sources/fixtures/`), which need no network access.
 
 Then click "Show data" to see the live graph.
 
@@ -100,7 +108,7 @@ client/live/     live-data store, source picker and debug panel
 client/bracket/  match card shape, layout, Generate layout, player colors
 client/palette/  diagram palette and status badge colors
 client/versions/ the Versions popover
-scripts/         the scheduled Blame the Pads schema check
+scripts/         the scheduled source checks, and start.gg token rotation
 client/pages/    Home, Diagram (view/edit), ObsView
 ```
 
@@ -109,6 +117,20 @@ client/pages/    Home, Diagram (view/edit), ObsView
 `.github/workflows/ci.yml` runs on every push and pull request. `btp-schema.yml` runs
 `npm run check:btp` daily (and on demand from the Actions tab); it needs the repository secrets
 `BTP_SUPABASE_URL` and `BTP_SUPABASE_ANON_KEY`, the same values the worker uses.
+`startgg-check.yml` runs `npm run check:startgg` daily; it needs the `STARTGG_TOKEN` secret and
+is skipped without it.
+
+### Rotating the start.gg token
+
+start.gg API tokens expire a year after they're made, and there's no API to make a new one.
+`worker/sources/startgg/token.ts` records the current token's expiry, and the daily
+`startgg-check.yml` starts failing 30 days before it, so GitHub emails a reminder. Then:
+
+1. Make a new token at <https://start.gg/admin/profile/developer>.
+2. Run `scripts/rotate-startgg-token.sh [YYYY-MM-DD]` with its expiry date (default: a year from
+   today). It puts the token in the worker (`wrangler secret put`), the GitHub secret and
+   `.dev.vars`, and updates `token.ts`.
+3. Commit `token.ts`.
 
 Client and worker are always deployed together as one Worker, so their tldraw versions always
 match, which tldraw sync requires.
@@ -125,6 +147,7 @@ match, which tldraw sync requires.
        ▲   WS    │ /api/diagrams/:id/connect ─► DiagramRoom (Durable Object)    │
        └─────────┤     ├─ TLSocketRoom + SQLite storage  (the diagram)          │
                  │     ├─ source adapter (btp) ──read──► Blame the Pads Supabase │
+                 │     ├─ source adapter (startgg) ─read─► start.gg GraphQL API  │
                  │     └─ pushes BracketGraph to clients as custom messages     │
                  └──────────────────────────────────────────────────────────────┘
 ```
@@ -132,7 +155,7 @@ match, which tldraw sync requires.
 - **One `DiagramRoom` durable object per diagram** hosts the tldraw sync room (`TLSocketRoom`,
   persisted to the object's built-in SQLite). It's also the only component that reads tournament
   data. Browsers never talk to a tournament backend, data is fetched once per diagram rather than
-  once per viewer, and future sources that need secrets (e.g. start.gg) keep them server-side.
+  once per viewer, and sources that need secrets (start.gg) keep them server-side.
 - **The diagram document only changes when a person edits it.** Live tournament data is pushed
   separately as tldraw sync custom messages (`room.sendCustomMessage` →
   `useSync({ onCustomMessageReceived })`). Cards render live data by key at draw time, so snapshots
@@ -302,16 +325,41 @@ interface BracketGraph {
 6. ✅ **Hardening.** R2 versions and restore, schema migrations, schema-drift CI check against
    Blame the Pads. Plus card text color and status badge colors.
 
+### The `startgg` adapter (start.gg, read-only)
+
+- Reads start.gg's GraphQL API (`worker/sources/startgg/`) with a personal API token
+  (`STARTGG_TOKEN`, a Worker secret). See [Rotating the start.gg token](#rotating-the-startgg-token).
+- **Source:** an event slug, optionally narrowed to a phase and a pool (phase group), parsed from
+  any start.gg event or bracket link. Each pool becomes a phase in the graph, named for its phase
+  ("Top 8"), or for the phase and pool when the phase has several ("Pools: Pool A1").
+- **Requests:** one for the event's phases and pools (reused for 5 minutes), then one per 50 sets
+  per pool. start.gg allows each token 80 requests a minute across every diagram, and 1000 objects
+  per request. So start.gg sources are read at most every 15 seconds, and less often when a read
+  needs more requests (each diagram aims for at most 20 a minute). A source covering more than 16
+  pools is refused with a request to narrow it down. The DiagramRoom's alarm still ticks every 5
+  seconds (it also saves versions), but only reads the source when the adapter says it may.
+- **Keys:** `startgg:group:<phaseGroupId>`, `startgg:set:<phaseGroupId>:<identifier>`,
+  `startgg:slot:<phaseGroupId>:<identifier>:<slotIndex>`, `startgg:entrant:<entrantId>`.
+  - Sets are keyed by their letter identifier, not their id: an unstarted bracket's sets have
+    temporary `preview_…` ids that change when it starts.
+  - Card titles shorten the round name and add the identifier, like Blame the Pads' template ids:
+    `WR1:A`, `LSF:AJ`, `Grand Final`. The layout recognizes lanes from these.
+- **Edges** come from each slot's prereq: a slot filled by placement 1 or 2 of another set is a
+  "Winner" or "Loser" edge from it.
+- **Results:** a completed two-entrant set's winner is 1st and the other entrant 2nd. An entrant
+  has left by an edge once they appear in the set it leads to, like the `btp` adapter.
+- **Byes:** start.gg leaves out sets with a bye, but keeps the losers-bracket sets they feed. A
+  slot that is a bye, or is empty and waiting on a missing or unplayable set, is left off its
+  card; a set with no other slots is left out, repeatedly. Losers sets fed by one bye therefore
+  appear as one-slot cards.
+- **Not yet:** progressions between phases (pools into top 8) aren't drawn as edges, since
+  entrants arrive by seed rather than by set. Round robin and swiss pools show their sets and
+  results, without edges.
+- The daily check reads the final phase of a finished event (Genesis 9 Melee Singles) through the
+  adapter, to catch API changes.
+
 ### Future sources
 
-If more sources are added (start.gg, public Google Sheets), each is another adapter producing
-`BracketGraph` inside the durable object.
-
-- **start.gg:**
-  - Set slots carry their prerequisite set and placement, which gives the edges directly.
-  - Requires an API token (kept server-side) and polling.
-  - Unstarted brackets may use temporary set ids, so layout keys should be phase group plus the
-    set's letter identifier, not set id.
 - **Google Sheets:** public CSV export plus a documented sheet convention (Matches / Entrants /
   Advancements tabs) and good validation errors.
 

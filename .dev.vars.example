@@ -6,3 +6,8 @@
 BTP_SUPABASE_URL=https://avspwakrfjdtqisdfhop.supabase.co
 # The anon key (a JWT with "role":"anon") from Blame the Pads' frontend bundle or its .env.
 BTP_SUPABASE_ANON_KEY=
+
+# A start.gg API token, from https://start.gg/admin/profile/developer. Only needed for diagrams
+# whose source is a start.gg event. Tokens expire after a year: scripts/rotate-startgg-token.sh
+# installs a new one here, in the worker and in GitHub, and records its expiry.
+STARTGG_TOKEN=
