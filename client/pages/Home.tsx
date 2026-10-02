@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { DIAGRAMS_PATH } from '../../shared/routes'
 import { knownDiagrams, rememberDiagram } from '../access'
+import lockupDark from '../brand/lockup-horizontal-dark.svg'
+import lockupLight from '../brand/lockup-horizontal-light.svg'
 
 const MATCHES = [
 	{
@@ -125,15 +127,20 @@ export function Home() {
 
 	return (
 		<div className="Home">
-			<h1>DDR Tools Brackets</h1>
+			<h1 className="Home-wordmark">
+				<picture>
+					<source srcSet={lockupDark} media="(prefers-color-scheme: dark)" />
+					<img src={lockupLight} alt="DDR Tools Brackets" width="249" height="87" />
+				</picture>
+			</h1>
 			<p className="Home-lead">
 				Turn your tournament's bracket into a <a href="https://www.tldraw.com/">tldraw</a> diagram
 				you can lay out and style however you like, effortlessly show them off on stream, and have
 				them stay updated live as matches are played.
 			</p>
 			<p>
-				This tool can visualize brackets on either
-				<a href="https://www.blamethepads.com/">Blame the Pads</a> or
+				This tool can visualize brackets on either{' '}
+				<a href="https://www.blamethepads.com/">Blame the Pads</a> or{' '}
 				<a href="https://www.start.gg/">start.gg</a>. Provide a link to a tournament and have its
 				matches, players, scores and statuses stay up to date even as you manually adjust layout and
 				styles.

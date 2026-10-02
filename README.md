@@ -1,3 +1,8 @@
+<picture>
+  <source srcset="client/brand/lockup-horizontal-dark.svg" media="(prefers-color-scheme: dark)">
+  <img src="client/brand/lockup-horizontal-light.svg" alt="DDR Tools Brackets" width="320">
+</picture>
+
 # tldraw-brackets
 
 Live, hand-customizable tournament bracket diagrams built on [tldraw](https://tldraw.dev).

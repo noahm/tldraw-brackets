@@ -540,6 +540,19 @@ body {
 	color: var(--home-link);
 }
 
+.Home-wordmark {
+	margin: 0 0 24px;
+	line-height: 0;
+}
+
+.Home-wordmark img {
+	width: 320px;
+	max-width: 100%;
+	height: auto;
+	/* The lockup has built-in padding around the mark; pull it flush with the text column. */
+	margin-left: -13px;
+}
+
 .Home-lead {
 	font-size: 18px;
 }

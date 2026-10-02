@@ -168,7 +168,7 @@ function DiagramWrapper({
 		<div className="DiagramWrapper">
 			<div className="DiagramWrapper-header">
 				<Link to="/" className="DiagramWrapper-home" aria-label="all diagrams">
-					<WifiIcon />
+					<BrandMark />
 				</Link>
 				<div className="DiagramWrapper-title">{title ?? diagramId}</div>
 				{!editToken && <span className="DiagramWrapper-badge">View only</span>}
@@ -250,21 +250,26 @@ function DiagramNotFound() {
 	)
 }
 
-function WifiIcon() {
+// The brand mark (client/brand), inlined so its strokes follow the header's text color.
+function BrandMark() {
 	return (
-		<svg
-			xmlns="http://www.w3.org/2000/svg"
-			fill="none"
-			viewBox="0 0 24 24"
-			strokeWidth="1.5"
-			stroke="currentColor"
-			width={16}
-		>
-			<path
+		<svg viewBox="0 0 64 64" width={20} height={20} aria-hidden="true">
+			<g
+				fill="none"
+				stroke="currentColor"
+				strokeWidth="4"
 				strokeLinecap="round"
 				strokeLinejoin="round"
-				d="M8.288 15.038a5.25 5.25 0 0 1 7.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 0 1 1.06 0Z"
-			/>
+			>
+				<path d="M4 9C7 8 10 10 14 9C15 12 13 16 14 19C10 18 7 20 4 19" />
+				<path d="M4 45C7 46 10 44 14 45C15 48 13 52 14 55C10 54 7 56 4 55" />
+				<path d="M14 14C18 13 22 15 26 14C27 24 25 40 26 50C22 51 18 49 14 50" />
+				<path d="M26 32C28 31 30 33 33 32" />
+				<path
+					d="M33 26C36 25 39 27 43 26C43 22 42 19 43 16C49 21 56 27 61 32C55 37 49 43 43 48C42 45 43 42 43 38C39 39 36 37 33 38C34 34 32 30 33 26Z"
+					fill="#7F77DD"
+				/>
+			</g>
 		</svg>
 	)
 }
