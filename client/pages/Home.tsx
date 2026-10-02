@@ -132,10 +132,11 @@ export function Home() {
 				them stay updated live as matches are played.
 			</p>
 			<p>
-				This tool currently only visualizes tournaments on{' '}
-				<a href="https://www.blamethepads.com/">Blame the Pads</a>, but with plans to support
-				start.gg soon. Provide a link to a BTP tournament and its matches, players, scores and
-				statuses stay up to date even as you manually adjust layout and styles.
+				This tool can visualize brackets on either
+				<a href="https://www.blamethepads.com/">Blame the Pads</a> or
+				<a href="https://www.start.gg/">start.gg</a>. Provide a link to a tournament and have its
+				matches, players, scores and statuses stay up to date even as you manually adjust layout and
+				styles.
 			</p>
 			<button className="Home-create" onClick={create} disabled={creating}>
 				Create diagram
