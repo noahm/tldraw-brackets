@@ -63,6 +63,8 @@ body {
 	cursor: pointer;
 	position: relative;
 	text-align: center;
+	white-space: nowrap;
+	flex: none;
 }
 
 .DiagramWrapper-copy:has(.DiagramWrapper-copied) {
@@ -88,14 +90,53 @@ body {
 }
 
 .SourceControls {
+	position: relative;
 	display: flex;
 	align-items: center;
 	gap: 8px;
 	margin-left: auto;
+	min-width: 0;
 }
 
 .SourceControls-current {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
 	color: var(--black-transparent-dark);
+}
+
+.SourceControls-label {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.SourceControls button {
+	white-space: nowrap;
+	flex: none;
+}
+
+.Spinner {
+	flex: none;
+	width: 12px;
+	height: 12px;
+	border: 2px solid currentColor;
+	border-right-color: transparent;
+	border-radius: 50%;
+	animation: Spinner-spin 0.7s linear infinite;
+}
+
+@keyframes Spinner-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.Spinner {
+		animation-duration: 2s;
+	}
 }
 
 .SourceControls input {
@@ -109,6 +150,16 @@ body {
 }
 
 .SourceControls-error {
+	/* below the header, so a long message doesn't squeeze everything in it */
+	position: absolute;
+	top: calc(100% + 12px);
+	right: 0;
+	z-index: 1000;
+	max-width: 420px;
+	padding: 6px 10px;
+	border: 1px solid hsl(0, 70%, 50%);
+	border-radius: 4px;
+	background: var(--background);
 	color: hsl(0, 70%, 50%);
 }
 

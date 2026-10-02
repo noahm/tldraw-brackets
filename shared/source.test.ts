@@ -1,5 +1,28 @@
 import { describe, expect, it } from 'vitest'
-import { describeSource, parseDiagramSource, parseStartggUrl } from './source'
+import { describeSource, parseDiagramSource, parseSourceInput, parseStartggUrl } from './source'
+
+describe('parseSourceInput', () => {
+	it('reads each kind of source an editor can type', () => {
+		expect(parseSourceInput(' fixture:de4-late ')).toEqual({ kind: 'fixture', name: 'de4-late' })
+		expect(parseSourceInput('https://www.start.gg/tournament/t/event/e/brackets/1')).toEqual({
+			kind: 'startgg',
+			eventSlug: 'tournament/t/event/e',
+			phaseId: 1,
+		})
+		expect(parseSourceInput('107')).toEqual({ kind: 'btp', tourneyId: 107 })
+		expect(parseSourceInput('https://blamethepads.com/tourney/92/bracket')).toEqual({
+			kind: 'btp',
+			tourneyId: 92,
+		})
+	})
+
+	it('rejects anything else', () => {
+		expect(parseSourceInput('')).toBeNull()
+		expect(parseSourceInput('0')).toBeNull()
+		expect(parseSourceInput('fixture:Bad Name')).toBeNull()
+		expect(parseSourceInput('https://example.com/')).toBeNull()
+	})
+})
 
 describe('parseStartggUrl', () => {
 	it('reads an event from any page within it', () => {

@@ -61,6 +61,20 @@ export function parseStartggUrl(text: string): DiagramSource | null {
 	})
 }
 
+/**
+ * A source from what an editor typed: fixture:<name>, a start.gg event or bracket link, or a
+ * Blame the Pads tourney id or any link within a tourney.
+ */
+export function parseSourceInput(text: string): DiagramSource | null {
+	const trimmed = text.trim()
+	const fixture = trimmed.match(/^fixture:([a-z0-9-]+)$/)
+	if (fixture) return { kind: 'fixture', name: fixture[1] }
+	const startgg = parseStartggUrl(trimmed)
+	if (startgg) return startgg
+	const id = Number((trimmed.match(/\/tourney\/(\d+)/) ?? trimmed.match(/^(\d+)$/))?.[1])
+	return parseDiagramSource({ kind: 'btp', tourneyId: id })
+}
+
 export function describeSource(source: DiagramSource): string {
 	switch (source.kind) {
 		case 'btp':
